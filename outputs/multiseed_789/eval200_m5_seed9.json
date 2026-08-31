@@ -1,0 +1,24 @@
+{
+  "model": "M5",
+  "seed": 9,
+  "episodes": 200,
+  "output_dir": "C:\\Users\\user\\Desktop\\Agentic_AI_HO\\outputs\\multiseed_789\\m5_seed9_1000",
+  "metrics": {
+    "outage_ratio": 0.2539732142857118,
+    "service_deficit": 0.11193050558835112,
+    "service_ratio_mean": 0.8851282403977658,
+    "resource_cost": 0.016630262026731246,
+    "dro": 0.014137447825488342,
+    "handover_started": 0.2394642857142857,
+    "pingpong_rate": 0.040235579040048305,
+    "handover_failure_rate": 0.08923688789456165,
+    "deadline_violation_rate": 0.02188463248021586,
+    "action_stay_fraction": 0.6156646825396789,
+    "action_prepare_fraction": 0.18123710317460906,
+    "action_dup_on_fraction": 0.013698412698413306,
+    "action_commit_fraction": 0.019955357142853906,
+    "action_release_fraction": 0.15658730158731135,
+    "outage_dual_mu": 0.6887207031176273,
+    "constraint_satisfied": 0.0
+  }
+}

@@ -1,0 +1,1093 @@
+iteration=0001 reward=  -0.184 miss=147.523 dup_cost= 0.051 actor_loss=-0.0042
+iteration=0002 reward=  -0.146 miss=101.820 dup_cost= 0.064 actor_loss=-0.0043
+iteration=0003 reward=  -0.212 miss=195.273 dup_cost= 0.072 actor_loss=-0.0076
+iteration=0004 reward=  -0.228 miss=216.062 dup_cost= 0.062 actor_loss=-0.0059
+iteration=0005 reward=  -0.143 miss=104.914 dup_cost= 0.057 actor_loss=-0.0076
+iteration=0006 reward=  -0.101 miss=54.695 dup_cost= 0.038 actor_loss=-0.0104
+iteration=0007 reward=  -0.204 miss=173.789 dup_cost= 0.045 actor_loss=-0.0076
+iteration=0008 reward=  -0.159 miss=126.570 dup_cost= 0.047 actor_loss=-0.0038
+iteration=0009 reward=  -0.087 miss=41.531 dup_cost= 0.039 actor_loss=-0.0065
+iteration=0010 reward=  -0.219 miss=229.633 dup_cost= 0.044 actor_loss=-0.0020
+iteration=0011 reward=  -0.166 miss=150.422 dup_cost= 0.041 actor_loss=-0.0073
+iteration=0012 reward=  -0.075 miss=33.414 dup_cost= 0.030 actor_loss= 0.0029
+iteration=0013 reward=  -0.148 miss=145.375 dup_cost= 0.036 actor_loss=-0.0053
+iteration=0014 reward=  -0.191 miss=169.578 dup_cost= 0.026 actor_loss= 0.0260
+iteration=0015 reward=  -0.079 miss=43.383 dup_cost= 0.019 actor_loss=-0.0091
+iteration=0016 reward=  -0.171 miss=148.617 dup_cost= 0.012 actor_loss=-0.0047
+iteration=0017 reward=  -0.188 miss=178.273 dup_cost= 0.027 actor_loss=-0.0092
+iteration=0018 reward=  -0.088 miss=75.305 dup_cost= 0.020 actor_loss=-0.0040
+iteration=0019 reward=  -0.065 miss=31.789 dup_cost= 0.012 actor_loss= 0.0146
+iteration=0020 reward=  -0.251 miss=290.148 dup_cost= 0.018 actor_loss= 0.0041
+iteration=0021 reward=  -0.107 miss=93.641 dup_cost= 0.016 actor_loss=-0.0066
+iteration=0022 reward=  -0.085 miss=37.781 dup_cost= 0.014 actor_loss=-0.0043
+iteration=0023 reward=  -0.191 miss=177.219 dup_cost= 0.014 actor_loss=-0.0050
+iteration=0024 reward=  -0.142 miss=146.727 dup_cost= 0.011 actor_loss=-0.0070
+iteration=0025 reward=  -0.045 miss=19.305 dup_cost= 0.020 actor_loss=-0.0023
+iteration=0026 reward=  -0.123 miss=105.523 dup_cost= 0.020 actor_loss=-0.0077
+iteration=0027 reward=  -0.194 miss=189.266 dup_cost= 0.012 actor_loss=-0.0245
+iteration=0028 reward=  -0.065 miss=35.719 dup_cost= 0.019 actor_loss=-0.0118
+iteration=0029 reward=  -0.091 miss=62.828 dup_cost= 0.014 actor_loss= 0.0858
+iteration=0030 reward=  -0.136 miss=105.523 dup_cost= 0.003 actor_loss=-0.0073
+iteration=0031 reward=  -0.093 miss=91.398 dup_cost= 0.006 actor_loss= 0.0130
+iteration=0032 reward=  -0.065 miss=46.305 dup_cost= 0.007 actor_loss=-0.0057
+iteration=0033 reward=  -0.101 miss=69.875 dup_cost= 0.006 actor_loss=-0.0020
+iteration=0034 reward=  -0.102 miss=92.328 dup_cost= 0.007 actor_loss=-0.0044
+iteration=0035 reward=  -0.045 miss=21.141 dup_cost= 0.011 actor_loss=-0.0057
+iteration=0036 reward=  -0.151 miss=156.461 dup_cost= 0.011 actor_loss= 0.0250
+iteration=0037 reward=  -0.147 miss=131.078 dup_cost= 0.006 actor_loss= 0.0074
+iteration=0038 reward=  -0.042 miss=18.914 dup_cost= 0.009 actor_loss=-0.0131
+iteration=0039 reward=  -0.080 miss=60.266 dup_cost= 0.012 actor_loss= 0.0019
+iteration=0040 reward=  -0.156 miss=118.289 dup_cost= 0.009 actor_loss=-0.0072
+iteration=0041 reward=  -0.066 miss=42.484 dup_cost= 0.014 actor_loss=-0.0087
+iteration=0042 reward=  -0.076 miss=45.055 dup_cost= 0.010 actor_loss=-0.0060
+iteration=0043 reward=  -0.125 miss=82.648 dup_cost= 0.007 actor_loss=-0.0016
+iteration=0044 reward=  -0.076 miss=52.984 dup_cost= 0.008 actor_loss=-0.0019
+iteration=0045 reward=  -0.058 miss=29.039 dup_cost= 0.011 actor_loss=-0.0075
+iteration=0046 reward=  -0.158 miss=146.383 dup_cost= 0.002 actor_loss=-0.0051
+iteration=0047 reward=  -0.080 miss=59.039 dup_cost= 0.003 actor_loss=-0.0279
+iteration=0048 reward=  -0.059 miss=25.234 dup_cost= 0.005 actor_loss=-0.0049
+iteration=0049 reward=  -0.102 miss=80.766 dup_cost= 0.002 actor_loss=-0.0060
+iteration=0050 reward=  -0.127 miss=96.047 dup_cost= 0.004 actor_loss=-0.0038
+iteration=0051 reward=  -0.069 miss=44.578 dup_cost= 0.005 actor_loss=-0.0055
+iteration=0052 reward=  -0.080 miss=58.906 dup_cost= 0.000 actor_loss=-0.0048
+iteration=0053 reward=  -0.196 miss=172.070 dup_cost= 0.007 actor_loss=-0.0163
+iteration=0054 reward=  -0.116 miss=100.711 dup_cost= 0.004 actor_loss= 0.0007
+iteration=0055 reward=  -0.089 miss=47.203 dup_cost= 0.006 actor_loss= 0.0267
+iteration=0056 reward=  -0.179 miss=155.062 dup_cost= 0.004 actor_loss= 0.0145
+iteration=0057 reward=  -0.068 miss=64.047 dup_cost= 0.001 actor_loss=-0.0043
+iteration=0058 reward=  -0.091 miss=39.766 dup_cost= 0.003 actor_loss=-0.0274
+iteration=0059 reward=  -0.129 miss=105.961 dup_cost= 0.006 actor_loss=-0.0054
+iteration=0060 reward=  -0.121 miss=84.555 dup_cost= 0.006 actor_loss= 0.0033
+iteration=0061 reward=  -0.061 miss=30.945 dup_cost= 0.007 actor_loss=-0.0036
+iteration=0062 reward=  -0.134 miss=127.438 dup_cost= 0.002 actor_loss=-0.0236
+iteration=0063 reward=  -0.179 miss=165.250 dup_cost= 0.001 actor_loss= 0.0220
+iteration=0064 reward=  -0.082 miss=57.312 dup_cost= 0.004 actor_loss=-0.0089
+iteration=0065 reward=  -0.085 miss=50.977 dup_cost= 0.004 actor_loss=-0.0038
+iteration=0066 reward=  -0.153 miss=120.031 dup_cost= 0.013 actor_loss=-0.0049
+iteration=0067 reward=  -0.086 miss=68.508 dup_cost= 0.004 actor_loss= 0.0101
+iteration=0068 reward=  -0.083 miss=35.969 dup_cost= 0.003 actor_loss=-0.0032
+iteration=0069 reward=  -0.144 miss=102.805 dup_cost= 0.006 actor_loss=-0.0019
+iteration=0070 reward=  -0.089 miss=78.984 dup_cost= 0.006 actor_loss=-0.0034
+iteration=0071 reward=  -0.091 miss=44.547 dup_cost= 0.015 actor_loss= 0.0137
+iteration=0072 reward=  -0.116 miss=103.250 dup_cost= 0.003 actor_loss=-0.0034
+iteration=0073 reward=  -0.188 miss=170.062 dup_cost= 0.009 actor_loss=-0.0145
+iteration=0074 reward=  -0.078 miss=45.758 dup_cost= 0.016 actor_loss= 0.0406
+iteration=0075 reward=  -0.117 miss=93.977 dup_cost= 0.024 actor_loss=-0.0077
+iteration=0076 reward=  -0.158 miss=125.531 dup_cost= 0.015 actor_loss= 0.0285
+iteration=0077 reward=  -0.058 miss=39.930 dup_cost= 0.016 actor_loss= 0.0012
+iteration=0078 reward=  -0.073 miss=39.891 dup_cost= 0.021 actor_loss=-0.0048
+iteration=0079 reward=  -0.153 miss=126.969 dup_cost= 0.011 actor_loss= 0.0500
+iteration=0080 reward=  -0.110 miss=90.180 dup_cost= 0.012 actor_loss= 0.0042
+iteration=0081 reward=  -0.082 miss=64.305 dup_cost= 0.012 actor_loss=-0.0029
+iteration=0082 reward=  -0.126 miss=114.672 dup_cost= 0.012 actor_loss=-0.0046
+iteration=0083 reward=  -0.119 miss=84.711 dup_cost= 0.012 actor_loss= 0.0113
+iteration=0084 reward=  -0.103 miss=64.258 dup_cost= 0.010 actor_loss=-0.0056
+iteration=0085 reward=  -0.132 miss=110.797 dup_cost= 0.007 actor_loss=-0.0023
+iteration=0086 reward=  -0.173 miss=152.969 dup_cost= 0.005 actor_loss=-0.0035
+iteration=0087 reward=  -0.065 miss=40.695 dup_cost= 0.007 actor_loss=-0.0046
+iteration=0088 reward=  -0.087 miss=57.797 dup_cost= 0.013 actor_loss=-0.0765
+iteration=0089 reward=  -0.209 miss=185.875 dup_cost= 0.004 actor_loss= 0.0068
+iteration=0090 reward=  -0.101 miss=80.906 dup_cost= 0.025 actor_loss= 0.0351
+iteration=0091 reward=  -0.065 miss=37.758 dup_cost= 0.016 actor_loss=-0.0249
+iteration=0092 reward=  -0.141 miss=104.234 dup_cost= 0.013 actor_loss= 0.0008
+iteration=0093 reward=  -0.116 miss=101.422 dup_cost= 0.018 actor_loss= 0.0236
+iteration=0094 reward=  -0.068 miss=32.758 dup_cost= 0.009 actor_loss=-0.0048
+iteration=0095 reward=  -0.156 miss=145.219 dup_cost= 0.009 actor_loss=-0.0079
+iteration=0096 reward=  -0.194 miss=208.953 dup_cost= 0.005 actor_loss=-0.0018
+iteration=0097 reward=  -0.115 miss=67.680 dup_cost= 0.017 actor_loss= 0.0020
+iteration=0098 reward=  -0.115 miss=95.414 dup_cost= 0.022 actor_loss=-0.0038
+iteration=0099 reward=  -0.157 miss=137.250 dup_cost= 0.012 actor_loss=-0.0062
+iteration=0100 reward=  -0.072 miss=53.273 dup_cost= 0.025 actor_loss=-0.0045
+iteration=0101 reward=  -0.073 miss=35.453 dup_cost= 0.014 actor_loss=-0.0035
+iteration=0102 reward=  -0.195 miss=195.945 dup_cost= 0.014 actor_loss=-0.0009
+iteration=0103 reward=  -0.101 miss=81.852 dup_cost= 0.020 actor_loss= 0.0114
+iteration=0104 reward=  -0.074 miss=39.109 dup_cost= 0.011 actor_loss=-0.0003
+iteration=0105 reward=  -0.200 miss=209.773 dup_cost= 0.024 actor_loss=-0.0086
+iteration=0106 reward=  -0.157 miss=137.688 dup_cost= 0.015 actor_loss=-0.0072
+iteration=0107 reward=  -0.082 miss=40.344 dup_cost= 0.016 actor_loss=-0.0059
+iteration=0108 reward=  -0.125 miss=99.344 dup_cost= 0.010 actor_loss=-0.0073
+iteration=0109 reward=  -0.172 miss=149.266 dup_cost= 0.008 actor_loss=-0.0078
+iteration=0110 reward=  -0.095 miss=68.797 dup_cost= 0.002 actor_loss=-0.0073
+iteration=0111 reward=  -0.071 miss=32.828 dup_cost= 0.009 actor_loss=-0.0079
+iteration=0112 reward=  -0.159 miss=134.266 dup_cost= 0.005 actor_loss=-0.0108
+iteration=0113 reward=  -0.119 miss=97.664 dup_cost= 0.008 actor_loss= 0.0132
+iteration=0114 reward=  -0.064 miss=48.422 dup_cost= 0.002 actor_loss=-0.0002
+iteration=0115 reward=  -0.155 miss=142.211 dup_cost= 0.004 actor_loss=-0.0104
+iteration=0116 reward=  -0.086 miss=81.750 dup_cost= 0.000 actor_loss=-0.0080
+iteration=0117 reward=  -0.074 miss=31.320 dup_cost= 0.001 actor_loss= 0.0020
+iteration=0118 reward=  -0.127 miss=115.742 dup_cost= 0.003 actor_loss=-0.0123
+iteration=0119 reward=  -0.159 miss=135.641 dup_cost= 0.002 actor_loss=-0.0063
+iteration=0120 reward=  -0.071 miss=46.523 dup_cost= 0.011 actor_loss= 0.0068
+iteration=0121 reward=  -0.088 miss=73.133 dup_cost= 0.010 actor_loss= 0.0002
+iteration=0122 reward=  -0.152 miss=123.312 dup_cost= 0.006 actor_loss=-0.0056
+iteration=0123 reward=  -0.093 miss=77.453 dup_cost= 0.006 actor_loss=-0.0089
+iteration=0124 reward=  -0.096 miss=37.297 dup_cost= 0.014 actor_loss=-0.0049
+iteration=0125 reward=  -0.180 miss=159.812 dup_cost= 0.007 actor_loss=-0.0089
+iteration=0126 reward=  -0.101 miss=74.695 dup_cost= 0.019 actor_loss= 0.0087
+iteration=0127 reward=  -0.099 miss=59.922 dup_cost= 0.008 actor_loss=-0.0059
+iteration=0128 reward=  -0.151 miss=133.555 dup_cost= 0.004 actor_loss=-0.0194
+iteration=0129 reward=  -0.130 miss=116.172 dup_cost= 0.008 actor_loss=-0.0092
+iteration=0130 reward=  -0.055 miss=32.117 dup_cost= 0.010 actor_loss= 0.0157
+iteration=0131 reward=  -0.084 miss=63.461 dup_cost= 0.012 actor_loss= 0.0047
+iteration=0132 reward=  -0.144 miss=109.086 dup_cost= 0.002 actor_loss=-0.0075
+iteration=0133 reward=  -0.075 miss=61.023 dup_cost= 0.013 actor_loss=-0.0049
+iteration=0134 reward=  -0.076 miss=51.883 dup_cost= 0.010 actor_loss=-0.0050
+iteration=0135 reward=  -0.183 miss=163.656 dup_cost= 0.005 actor_loss=-0.0063
+iteration=0136 reward=  -0.078 miss=54.219 dup_cost= 0.008 actor_loss=-0.0087
+iteration=0137 reward=  -0.076 miss=43.109 dup_cost= 0.010 actor_loss=-0.0159
+iteration=0138 reward=  -0.145 miss=112.617 dup_cost= 0.009 actor_loss=-0.0059
+iteration=0139 reward=  -0.062 miss=41.133 dup_cost= 0.008 actor_loss=-0.0053
+iteration=0140 reward=  -0.055 miss=26.047 dup_cost= 0.007 actor_loss=-0.0053
+iteration=0141 reward=  -0.122 miss=87.008 dup_cost= 0.009 actor_loss= 0.0156
+iteration=0142 reward=  -0.151 miss=127.000 dup_cost= 0.013 actor_loss=-0.0055
+iteration=0143 reward=  -0.108 miss=67.195 dup_cost= 0.013 actor_loss= 0.0888
+iteration=0144 reward=  -0.086 miss=65.664 dup_cost= 0.010 actor_loss=-0.0151
+iteration=0145 reward=  -0.168 miss=139.258 dup_cost= 0.015 actor_loss= 0.0283
+iteration=0146 reward=  -0.068 miss=41.945 dup_cost= 0.019 actor_loss= 0.0079
+iteration=0147 reward=  -0.074 miss=45.164 dup_cost= 0.006 actor_loss=-0.0088
+iteration=0148 reward=  -0.175 miss=152.602 dup_cost= 0.008 actor_loss= 0.0145
+iteration=0149 reward=  -0.088 miss=72.945 dup_cost= 0.008 actor_loss=-0.0012
+iteration=0150 reward=  -0.045 miss=21.320 dup_cost= 0.004 actor_loss= 0.0071
+iteration=0151 reward=  -0.160 miss=138.570 dup_cost= 0.012 actor_loss= 0.0664
+iteration=0152 reward=  -0.086 miss=52.000 dup_cost= 0.013 actor_loss=-0.0509
+iteration=0153 reward=  -0.058 miss=19.445 dup_cost= 0.018 actor_loss=-0.0024
+iteration=0154 reward=  -0.120 miss=100.570 dup_cost= 0.013 actor_loss=-0.0006
+iteration=0155 reward=  -0.137 miss=112.766 dup_cost= 0.008 actor_loss=-0.0085
+iteration=0156 reward=  -0.071 miss=37.562 dup_cost= 0.010 actor_loss= 0.0174
+iteration=0157 reward=  -0.070 miss=47.727 dup_cost= 0.008 actor_loss= 0.0255
+iteration=0158 reward=  -0.156 miss=129.391 dup_cost= 0.004 actor_loss=-0.0359
+iteration=0159 reward=  -0.062 miss=42.852 dup_cost= 0.007 actor_loss=-0.0064
+iteration=0160 reward=  -0.055 miss=30.508 dup_cost= 0.005 actor_loss= 0.0019
+iteration=0161 reward=  -0.116 miss=92.164 dup_cost= 0.011 actor_loss= 0.0151
+iteration=0162 reward=  -0.100 miss=100.125 dup_cost= 0.011 actor_loss=-0.0031
+iteration=0163 reward=  -0.065 miss=38.625 dup_cost= 0.009 actor_loss=-0.0100
+iteration=0164 reward=  -0.124 miss=106.312 dup_cost= 0.010 actor_loss=-0.0018
+iteration=0165 reward=  -0.140 miss=121.422 dup_cost= 0.016 actor_loss=-0.0091
+iteration=0166 reward=  -0.037 miss= 6.391 dup_cost= 0.017 actor_loss=-0.0049
+iteration=0167 reward=  -0.071 miss=45.859 dup_cost= 0.020 actor_loss= 0.1109
+iteration=0168 reward=  -0.139 miss=98.781 dup_cost= 0.022 actor_loss= 0.0186
+iteration=0169 reward=  -0.044 miss=12.727 dup_cost= 0.023 actor_loss= 0.0118
+iteration=0170 reward=  -0.101 miss=58.781 dup_cost= 0.020 actor_loss= 0.0062
+iteration=0171 reward=  -0.156 miss=123.500 dup_cost= 0.032 actor_loss= 0.0142
+iteration=0172 reward=  -0.058 miss=35.445 dup_cost= 0.026 actor_loss= 0.0120
+iteration=0173 reward=  -0.063 miss=22.281 dup_cost= 0.020 actor_loss= 0.0164
+iteration=0174 reward=  -0.132 miss=100.672 dup_cost= 0.020 actor_loss= 0.0023
+iteration=0175 reward=  -0.111 miss=91.617 dup_cost= 0.020 actor_loss=-0.0083
+iteration=0176 reward=  -0.094 miss=51.898 dup_cost= 0.019 actor_loss= 0.0199
+iteration=0177 reward=  -0.095 miss=64.727 dup_cost= 0.026 actor_loss=-0.0114
+iteration=0178 reward=  -0.120 miss=72.664 dup_cost= 0.024 actor_loss= 0.0292
+iteration=0179 reward=  -0.052 miss=24.352 dup_cost= 0.023 actor_loss= 0.0184
+iteration=0180 reward=  -0.065 miss=36.430 dup_cost= 0.032 actor_loss= 0.0074
+iteration=0181 reward=  -0.187 miss=164.805 dup_cost= 0.014 actor_loss=-0.0144
+iteration=0182 reward=  -0.083 miss=56.023 dup_cost= 0.028 actor_loss=-0.0069
+iteration=0183 reward=  -0.097 miss=41.234 dup_cost= 0.017 actor_loss=-0.0017
+iteration=0184 reward=  -0.149 miss=118.758 dup_cost= 0.019 actor_loss= 0.0736
+iteration=0185 reward=  -0.114 miss=92.742 dup_cost= 0.024 actor_loss=-0.0058
+iteration=0186 reward=  -0.065 miss=27.891 dup_cost= 0.033 actor_loss= 0.0136
+iteration=0187 reward=  -0.134 miss=102.758 dup_cost= 0.027 actor_loss=-0.0322
+iteration=0188 reward=  -0.129 miss=89.703 dup_cost= 0.026 actor_loss=-0.0081
+iteration=0189 reward=  -0.087 miss=33.102 dup_cost= 0.034 actor_loss=-0.0034
+iteration=0190 reward=  -0.094 miss=67.352 dup_cost= 0.026 actor_loss= 0.0178
+iteration=0191 reward=  -0.193 miss=174.180 dup_cost= 0.025 actor_loss=-0.0055
+iteration=0192 reward=  -0.045 miss=17.055 dup_cost= 0.029 actor_loss=-0.0270
+iteration=0193 reward=  -0.093 miss=45.305 dup_cost= 0.030 actor_loss= 0.0145
+iteration=0194 reward=  -0.218 miss=206.211 dup_cost= 0.029 actor_loss=-0.0068
+iteration=0195 reward=  -0.108 miss=86.914 dup_cost= 0.025 actor_loss=-0.0207
+iteration=0196 reward=  -0.080 miss=37.578 dup_cost= 0.028 actor_loss= 0.0046
+iteration=0197 reward=  -0.179 miss=144.977 dup_cost= 0.028 actor_loss=-0.0007
+iteration=0198 reward=  -0.117 miss=92.078 dup_cost= 0.029 actor_loss=-0.0044
+iteration=0199 reward=  -0.067 miss=24.625 dup_cost= 0.026 actor_loss= 0.0219
+iteration=0200 reward=  -0.170 miss=154.820 dup_cost= 0.026 actor_loss= 0.0057
+iteration=0201 reward=  -0.158 miss=137.797 dup_cost= 0.027 actor_loss=-0.0083
+iteration=0202 reward=  -0.056 miss=28.680 dup_cost= 0.025 actor_loss=-0.0092
+iteration=0203 reward=  -0.075 miss=51.430 dup_cost= 0.020 actor_loss=-0.0076
+iteration=0204 reward=  -0.155 miss=134.961 dup_cost= 0.022 actor_loss=-0.0260
+iteration=0205 reward=  -0.081 miss=45.008 dup_cost= 0.029 actor_loss=-0.0024
+iteration=0206 reward=  -0.068 miss=27.719 dup_cost= 0.022 actor_loss=-0.0535
+iteration=0207 reward=  -0.179 miss=158.750 dup_cost= 0.025 actor_loss=-0.0081
+iteration=0208 reward=  -0.076 miss=57.688 dup_cost= 0.015 actor_loss= 0.0328
+iteration=0209 reward=  -0.077 miss=30.969 dup_cost= 0.019 actor_loss= 0.0270
+iteration=0210 reward=  -0.100 miss=79.969 dup_cost= 0.017 actor_loss=-0.0156
+iteration=0211 reward=  -0.112 miss=62.133 dup_cost= 0.013 actor_loss=-0.0026
+iteration=0212 reward=  -0.050 miss=13.922 dup_cost= 0.025 actor_loss= 0.0166
+iteration=0213 reward=  -0.084 miss=55.125 dup_cost= 0.021 actor_loss= 0.0016
+iteration=0214 reward=  -0.151 miss=121.250 dup_cost= 0.015 actor_loss=-0.0073
+iteration=0215 reward=  -0.055 miss=28.586 dup_cost= 0.011 actor_loss=-0.0000
+iteration=0216 reward=  -0.105 miss=80.664 dup_cost= 0.012 actor_loss= 0.0176
+iteration=0217 reward=  -0.166 miss=148.094 dup_cost= 0.016 actor_loss= 0.0124
+iteration=0218 reward=  -0.077 miss=57.594 dup_cost= 0.012 actor_loss= 0.0170
+iteration=0219 reward=  -0.039 miss=13.867 dup_cost= 0.012 actor_loss=-0.0045
+iteration=0220 reward=  -0.155 miss=111.578 dup_cost= 0.010 actor_loss= 0.0157
+iteration=0221 reward=  -0.094 miss=71.734 dup_cost= 0.016 actor_loss=-0.0081
+iteration=0222 reward=  -0.056 miss=37.445 dup_cost= 0.009 actor_loss=-0.0091
+iteration=0223 reward=  -0.119 miss=86.852 dup_cost= 0.009 actor_loss= 0.0022
+iteration=0224 reward=  -0.114 miss=69.828 dup_cost= 0.020 actor_loss=-0.0031
+iteration=0225 reward=  -0.063 miss=24.531 dup_cost= 0.015 actor_loss= 0.0099
+iteration=0226 reward=  -0.093 miss=57.125 dup_cost= 0.016 actor_loss= 0.0444
+iteration=0227 reward=  -0.144 miss=121.180 dup_cost= 0.012 actor_loss= 0.0005
+iteration=0228 reward=  -0.065 miss=51.086 dup_cost= 0.012 actor_loss=-0.0076
+iteration=0229 reward=  -0.059 miss=33.266 dup_cost= 0.012 actor_loss= 0.0157
+iteration=0230 reward=  -0.175 miss=155.180 dup_cost= 0.007 actor_loss=-0.0296
+iteration=0231 reward=  -0.043 miss=23.414 dup_cost= 0.012 actor_loss=-0.0137
+iteration=0232 reward=  -0.062 miss=25.969 dup_cost= 0.005 actor_loss=-0.0054
+iteration=0233 reward=  -0.074 miss=45.711 dup_cost= 0.006 actor_loss=-0.0011
+iteration=0234 reward=  -0.104 miss=84.094 dup_cost= 0.009 actor_loss= 0.0223
+iteration=0235 reward=  -0.028 miss=12.055 dup_cost= 0.013 actor_loss=-0.0059
+iteration=0236 reward=  -0.089 miss=72.062 dup_cost= 0.006 actor_loss=-0.0073
+iteration=0237 reward=  -0.077 miss=42.727 dup_cost= 0.006 actor_loss=-0.0096
+iteration=0238 reward=  -0.039 miss=19.781 dup_cost= 0.005 actor_loss= 0.0157
+iteration=0239 reward=  -0.034 miss=19.344 dup_cost= 0.005 actor_loss= 0.0167
+iteration=0240 reward=  -0.106 miss=70.398 dup_cost= 0.004 actor_loss=-0.0081
+iteration=0241 reward=  -0.052 miss=36.102 dup_cost= 0.003 actor_loss=-0.0096
+iteration=0242 reward=  -0.011 miss= 2.047 dup_cost= 0.004 actor_loss=-0.0251
+iteration=0243 reward=  -0.093 miss=57.719 dup_cost= 0.005 actor_loss= 0.0197
+iteration=0244 reward=  -0.054 miss=28.359 dup_cost= 0.004 actor_loss=-0.0010
+iteration=0245 reward=  -0.022 miss= 7.461 dup_cost= 0.004 actor_loss=-0.0089
+iteration=0246 reward=  -0.077 miss=58.586 dup_cost= 0.005 actor_loss=-0.0076
+iteration=0247 reward=  -0.087 miss=55.078 dup_cost= 0.009 actor_loss=-0.0013
+iteration=0248 reward=  -0.029 miss= 8.359 dup_cost= 0.002 actor_loss=-0.0360
+iteration=0249 reward=  -0.038 miss=34.609 dup_cost= 0.001 actor_loss=-0.0020
+iteration=0250 reward=  -0.100 miss=65.094 dup_cost= 0.003 actor_loss=-0.0221
+iteration=0251 reward=  -0.032 miss=22.305 dup_cost= 0.001 actor_loss=-0.0079
+iteration=0252 reward=  -0.031 miss=11.812 dup_cost= 0.002 actor_loss=-0.0050
+iteration=0253 reward=  -0.131 miss=97.953 dup_cost= 0.004 actor_loss=-0.0116
+iteration=0254 reward=  -0.053 miss=32.336 dup_cost= 0.002 actor_loss=-0.0039
+iteration=0255 reward=  -0.036 miss=19.992 dup_cost= 0.002 actor_loss= 0.0191
+iteration=0256 reward=  -0.101 miss=62.609 dup_cost= 0.003 actor_loss= 0.0029
+iteration=0257 reward=  -0.110 miss=94.953 dup_cost= 0.006 actor_loss=-0.0041
+iteration=0258 reward=  -0.043 miss=14.555 dup_cost= 0.007 actor_loss=-0.0061
+iteration=0259 reward=  -0.061 miss=45.312 dup_cost= 0.006 actor_loss=-0.0079
+iteration=0260 reward=  -0.100 miss=62.195 dup_cost= 0.006 actor_loss=-0.0111
+iteration=0261 reward=  -0.049 miss=20.297 dup_cost= 0.007 actor_loss=-0.0007
+iteration=0262 reward=  -0.027 miss=13.977 dup_cost= 0.002 actor_loss=-0.0156
+iteration=0263 reward=  -0.085 miss=59.852 dup_cost= 0.008 actor_loss=-0.0144
+iteration=0264 reward=  -0.035 miss=20.023 dup_cost= 0.003 actor_loss=-0.0144
+iteration=0265 reward=  -0.047 miss=18.234 dup_cost= 0.001 actor_loss=-0.0178
+iteration=0266 reward=  -0.122 miss=74.422 dup_cost= 0.002 actor_loss=-0.0231
+iteration=0267 reward=  -0.065 miss=45.766 dup_cost= 0.001 actor_loss=-0.0092
+iteration=0268 reward=  -0.040 miss= 8.570 dup_cost= 0.000 actor_loss=-0.0138
+iteration=0269 reward=  -0.058 miss=45.312 dup_cost= 0.002 actor_loss=-0.0075
+iteration=0270 reward=  -0.071 miss=44.344 dup_cost= 0.000 actor_loss= 0.0090
+iteration=0271 reward=  -0.039 miss=11.578 dup_cost= 0.002 actor_loss= 0.0023
+iteration=0272 reward=  -0.063 miss=36.586 dup_cost= 0.004 actor_loss=-0.0036
+iteration=0273 reward=  -0.147 miss=100.492 dup_cost= 0.006 actor_loss=-0.0087
+iteration=0274 reward=  -0.046 miss=26.742 dup_cost= 0.003 actor_loss= 0.0198
+iteration=0275 reward=  -0.036 miss=19.070 dup_cost= 0.001 actor_loss=-0.0062
+iteration=0276 reward=  -0.134 miss=98.977 dup_cost= 0.003 actor_loss=-0.0177
+iteration=0277 reward=  -0.047 miss=28.781 dup_cost= 0.005 actor_loss=-0.0262
+iteration=0278 reward=  -0.036 miss=14.969 dup_cost= 0.003 actor_loss= 0.0167
+iteration=0279 reward=  -0.119 miss=81.961 dup_cost= 0.003 actor_loss=-0.0119
+iteration=0280 reward=  -0.029 miss=19.719 dup_cost= 0.001 actor_loss=-0.0166
+iteration=0281 reward=  -0.013 miss= 4.258 dup_cost= 0.004 actor_loss=-0.0303
+iteration=0282 reward=  -0.075 miss=62.891 dup_cost= 0.002 actor_loss= 0.0127
+iteration=0283 reward=  -0.104 miss=63.438 dup_cost= 0.004 actor_loss= 0.0110
+iteration=0284 reward=  -0.014 miss= 4.680 dup_cost= 0.002 actor_loss=-0.0088
+iteration=0285 reward=  -0.009 miss= 6.281 dup_cost= 0.001 actor_loss=-0.0261
+iteration=0286 reward=  -0.114 miss=92.906 dup_cost= 0.002 actor_loss=-0.0124
+iteration=0287 reward=  -0.054 miss=28.188 dup_cost= 0.001 actor_loss= 0.0202
+iteration=0288 reward=  -0.065 miss=36.172 dup_cost= 0.001 actor_loss= 0.0174
+iteration=0289 reward=  -0.120 miss=70.953 dup_cost= 0.001 actor_loss=-0.0068
+iteration=0290 reward=  -0.072 miss=53.094 dup_cost= 0.001 actor_loss=-0.0015
+iteration=0291 reward=  -0.041 miss=18.117 dup_cost= 0.002 actor_loss= 0.0378
+iteration=0292 reward=  -0.109 miss=77.297 dup_cost= 0.004 actor_loss= 0.0075
+iteration=0293 reward=  -0.077 miss=48.156 dup_cost= 0.001 actor_loss= 0.0344
+iteration=0294 reward=  -0.021 miss=10.516 dup_cost= 0.003 actor_loss=-0.0023
+iteration=0295 reward=  -0.075 miss=53.664 dup_cost= 0.002 actor_loss= 0.0222
+iteration=0296 reward=  -0.116 miss=78.359 dup_cost= 0.001 actor_loss=-0.0001
+iteration=0297 reward=  -0.079 miss=37.180 dup_cost= 0.002 actor_loss=-0.0338
+iteration=0298 reward=  -0.041 miss=22.664 dup_cost= 0.003 actor_loss=-0.0023
+iteration=0299 reward=  -0.146 miss=106.156 dup_cost= 0.003 actor_loss= 0.0038
+iteration=0300 reward=  -0.040 miss=26.820 dup_cost= 0.003 actor_loss= 0.0035
+iteration=0301 reward=  -0.068 miss=24.391 dup_cost= 0.005 actor_loss=-0.0198
+iteration=0302 reward=  -0.114 miss=74.805 dup_cost= 0.003 actor_loss=-0.0066
+iteration=0303 reward=  -0.058 miss=44.711 dup_cost= 0.001 actor_loss= 0.0293
+iteration=0304 reward=  -0.031 miss=10.562 dup_cost= 0.003 actor_loss=-0.0386
+iteration=0305 reward=  -0.077 miss=57.102 dup_cost= 0.002 actor_loss=-0.0037
+iteration=0306 reward=  -0.102 miss=63.812 dup_cost= 0.005 actor_loss=-0.0126
+iteration=0307 reward=  -0.032 miss= 8.789 dup_cost= 0.002 actor_loss= 0.0705
+iteration=0308 reward=  -0.039 miss=24.930 dup_cost= 0.003 actor_loss= 0.0070
+iteration=0309 reward=  -0.102 miss=68.547 dup_cost= 0.006 actor_loss=-0.0449
+iteration=0310 reward=  -0.046 miss=22.930 dup_cost= 0.012 actor_loss= 0.0037
+iteration=0311 reward=  -0.030 miss=10.203 dup_cost= 0.004 actor_loss=-0.0072
+iteration=0312 reward=  -0.153 miss=110.625 dup_cost= 0.011 actor_loss=-0.0081
+iteration=0313 reward=  -0.056 miss=45.516 dup_cost= 0.007 actor_loss= 0.0020
+iteration=0314 reward=  -0.039 miss=14.555 dup_cost= 0.007 actor_loss=-0.0147
+iteration=0315 reward=  -0.098 miss=70.883 dup_cost= 0.005 actor_loss=-0.0081
+iteration=0316 reward=  -0.132 miss=115.102 dup_cost= 0.007 actor_loss=-0.0077
+iteration=0317 reward=  -0.033 miss=12.172 dup_cost= 0.003 actor_loss=-0.0078
+iteration=0318 reward=  -0.034 miss=13.094 dup_cost= 0.005 actor_loss=-0.0079
+iteration=0319 reward=  -0.103 miss=54.062 dup_cost= 0.013 actor_loss=-0.0118
+iteration=0320 reward=  -0.041 miss=17.906 dup_cost= 0.004 actor_loss=-0.0090
+iteration=0321 reward=  -0.052 miss=31.398 dup_cost= 0.005 actor_loss=-0.0148
+iteration=0322 reward=  -0.126 miss=100.172 dup_cost= 0.002 actor_loss=-0.0111
+iteration=0323 reward=  -0.028 miss=15.711 dup_cost= 0.005 actor_loss=-0.0110
+iteration=0324 reward=  -0.029 miss= 5.797 dup_cost= 0.004 actor_loss=-0.0099
+iteration=0325 reward=  -0.091 miss=49.258 dup_cost= 0.004 actor_loss=-0.0024
+iteration=0326 reward=  -0.058 miss=42.234 dup_cost= 0.006 actor_loss=-0.0091
+iteration=0327 reward=  -0.030 miss=10.625 dup_cost= 0.004 actor_loss=-0.0106
+iteration=0328 reward=  -0.045 miss=38.383 dup_cost= 0.004 actor_loss=-0.0269
+iteration=0329 reward=  -0.125 miss=92.953 dup_cost= 0.006 actor_loss=-0.0068
+iteration=0330 reward=  -0.028 miss= 6.727 dup_cost= 0.003 actor_loss=-0.0011
+iteration=0331 reward=  -0.035 miss=27.227 dup_cost= 0.001 actor_loss=-0.0002
+iteration=0332 reward=  -0.079 miss=41.273 dup_cost= 0.004 actor_loss=-0.0122
+iteration=0333 reward=  -0.022 miss=11.500 dup_cost= 0.003 actor_loss=-0.0051
+iteration=0334 reward=  -0.032 miss=10.195 dup_cost= 0.002 actor_loss=-0.0088
+iteration=0335 reward=  -0.086 miss=48.609 dup_cost= 0.004 actor_loss= 0.0033
+iteration=0336 reward=  -0.026 miss=18.188 dup_cost= 0.002 actor_loss=-0.0080
+iteration=0337 reward=  -0.023 miss= 8.539 dup_cost= 0.000 actor_loss=-0.0038
+iteration=0338 reward=  -0.080 miss=46.844 dup_cost= 0.003 actor_loss= 0.0087
+iteration=0339 reward=  -0.111 miss=91.375 dup_cost= 0.007 actor_loss= 0.1584
+iteration=0340 reward=  -0.050 miss=31.336 dup_cost= 0.006 actor_loss= 0.0065
+iteration=0341 reward=  -0.078 miss=70.852 dup_cost= 0.009 actor_loss=-0.0130
+iteration=0342 reward=  -0.136 miss=107.773 dup_cost= 0.010 actor_loss= 0.0085
+iteration=0343 reward=  -0.029 miss=14.258 dup_cost= 0.002 actor_loss=-0.0063
+iteration=0344 reward=  -0.048 miss=22.484 dup_cost= 0.007 actor_loss= 0.0023
+iteration=0345 reward=  -0.103 miss=54.008 dup_cost= 0.005 actor_loss= 0.0146
+iteration=0346 reward=  -0.049 miss=28.000 dup_cost= 0.003 actor_loss=-0.0227
+iteration=0347 reward=  -0.046 miss=16.297 dup_cost= 0.001 actor_loss=-0.0048
+iteration=0348 reward=  -0.122 miss=82.602 dup_cost= 0.005 actor_loss= 0.0072
+iteration=0349 reward=  -0.071 miss=60.906 dup_cost= 0.004 actor_loss= 0.0003
+iteration=0350 reward=  -0.017 miss= 3.578 dup_cost= 0.002 actor_loss=-0.0035
+iteration=0351 reward=  -0.116 miss=99.883 dup_cost= 0.004 actor_loss=-0.0330
+iteration=0352 reward=  -0.123 miss=99.555 dup_cost= 0.006 actor_loss= 0.0072
+iteration=0353 reward=  -0.054 miss=27.891 dup_cost= 0.006 actor_loss=-0.0109
+iteration=0354 reward=  -0.062 miss=48.703 dup_cost= 0.007 actor_loss= 0.0183
+iteration=0355 reward=  -0.118 miss=95.188 dup_cost= 0.005 actor_loss=-0.0309
+iteration=0356 reward=  -0.056 miss=26.195 dup_cost= 0.003 actor_loss= 0.0049
+iteration=0357 reward=  -0.032 miss=30.398 dup_cost= 0.002 actor_loss=-0.0041
+iteration=0358 reward=  -0.099 miss=70.883 dup_cost= 0.009 actor_loss=-0.0098
+iteration=0359 reward=  -0.063 miss=57.109 dup_cost= 0.006 actor_loss= 0.0115
+iteration=0360 reward=  -0.034 miss= 9.594 dup_cost= 0.008 actor_loss=-0.0064
+iteration=0361 reward=  -0.119 miss=93.023 dup_cost= 0.005 actor_loss= 0.0054
+iteration=0362 reward=  -0.083 miss=68.000 dup_cost= 0.016 actor_loss= 0.0007
+iteration=0363 reward=  -0.036 miss=10.234 dup_cost= 0.003 actor_loss=-0.0051
+iteration=0364 reward=  -0.085 miss=70.203 dup_cost= 0.011 actor_loss= 0.0009
+iteration=0365 reward=  -0.103 miss=69.688 dup_cost= 0.011 actor_loss=-0.0085
+iteration=0366 reward=  -0.057 miss=29.953 dup_cost= 0.009 actor_loss= 0.0052
+iteration=0367 reward=  -0.048 miss=32.305 dup_cost= 0.008 actor_loss=-0.0027
+iteration=0368 reward=  -0.160 miss=132.227 dup_cost= 0.024 actor_loss=-0.0474
+iteration=0369 reward=  -0.059 miss=33.461 dup_cost= 0.012 actor_loss=-0.0142
+iteration=0370 reward=  -0.031 miss= 8.547 dup_cost= 0.018 actor_loss= 0.0134
+iteration=0371 reward=  -0.127 miss=107.844 dup_cost= 0.018 actor_loss=-0.0083
+iteration=0372 reward=  -0.073 miss=50.758 dup_cost= 0.015 actor_loss= 0.0071
+iteration=0373 reward=  -0.044 miss=19.047 dup_cost= 0.017 actor_loss=-0.0009
+iteration=0374 reward=  -0.125 miss=101.078 dup_cost= 0.012 actor_loss=-0.0031
+iteration=0375 reward=  -0.161 miss=140.289 dup_cost= 0.022 actor_loss= 0.0259
+iteration=0376 reward=  -0.035 miss=14.375 dup_cost= 0.009 actor_loss=-0.0053
+iteration=0377 reward=  -0.084 miss=68.000 dup_cost= 0.010 actor_loss=-0.0023
+iteration=0378 reward=  -0.189 miss=172.281 dup_cost= 0.024 actor_loss=-0.0052
+iteration=0379 reward=  -0.091 miss=64.352 dup_cost= 0.025 actor_loss= 0.0217
+iteration=0380 reward=  -0.037 miss=13.906 dup_cost= 0.010 actor_loss= 0.0005
+iteration=0381 reward=  -0.174 miss=155.523 dup_cost= 0.018 actor_loss=-0.0131
+iteration=0382 reward=  -0.067 miss=45.531 dup_cost= 0.016 actor_loss= 0.0322
+iteration=0383 reward=  -0.026 miss=14.195 dup_cost= 0.007 actor_loss=-0.0339
+iteration=0384 reward=  -0.120 miss=94.680 dup_cost= 0.007 actor_loss=-0.0216
+iteration=0385 reward=  -0.096 miss=66.203 dup_cost= 0.013 actor_loss=-0.0080
+iteration=0386 reward=  -0.033 miss= 8.430 dup_cost= 0.008 actor_loss=-0.0124
+iteration=0387 reward=  -0.056 miss=50.344 dup_cost= 0.006 actor_loss= 0.0116
+iteration=0388 reward=  -0.086 miss=55.930 dup_cost= 0.013 actor_loss=-0.0098
+iteration=0389 reward=  -0.035 miss=17.109 dup_cost= 0.007 actor_loss=-0.0424
+iteration=0390 reward=  -0.054 miss=32.594 dup_cost= 0.011 actor_loss= 0.0003
+iteration=0391 reward=  -0.112 miss=75.203 dup_cost= 0.012 actor_loss= 0.0006
+iteration=0392 reward=  -0.058 miss=31.266 dup_cost= 0.023 actor_loss=-0.0068
+iteration=0393 reward=  -0.045 miss=28.500 dup_cost= 0.010 actor_loss=-0.0079
+iteration=0394 reward=  -0.167 miss=158.164 dup_cost= 0.022 actor_loss=-0.0151
+iteration=0395 reward=  -0.072 miss=54.938 dup_cost= 0.018 actor_loss=-0.0050
+iteration=0396 reward=  -0.050 miss=31.914 dup_cost= 0.014 actor_loss=-0.0066
+iteration=0397 reward=  -0.082 miss=56.492 dup_cost= 0.010 actor_loss=-0.0055
+iteration=0398 reward=  -0.132 miss=100.047 dup_cost= 0.025 actor_loss=-0.0108
+iteration=0399 reward=  -0.101 miss=42.016 dup_cost= 0.018 actor_loss= 0.0083
+iteration=0400 reward=  -0.040 miss=20.781 dup_cost= 0.016 actor_loss=-0.0054
+iteration=0401 reward=  -0.105 miss=56.914 dup_cost= 0.023 actor_loss=-0.0099
+iteration=0402 reward=  -0.065 miss=34.336 dup_cost= 0.032 actor_loss= 0.0090
+iteration=0403 reward=  -0.035 miss=11.812 dup_cost= 0.011 actor_loss=-0.0568
+iteration=0404 reward=  -0.125 miss=77.305 dup_cost= 0.013 actor_loss=-0.0044
+iteration=0405 reward=  -0.080 miss=58.281 dup_cost= 0.022 actor_loss=-0.0099
+iteration=0406 reward=  -0.046 miss=18.820 dup_cost= 0.011 actor_loss=-0.0025
+iteration=0407 reward=  -0.090 miss=54.406 dup_cost= 0.014 actor_loss=-0.0074
+iteration=0408 reward=  -0.088 miss=70.742 dup_cost= 0.016 actor_loss=-0.0069
+iteration=0409 reward=  -0.032 miss= 6.938 dup_cost= 0.013 actor_loss=-0.0144
+iteration=0410 reward=  -0.088 miss=64.906 dup_cost= 0.010 actor_loss= 0.0083
+iteration=0411 reward=  -0.109 miss=72.531 dup_cost= 0.009 actor_loss=-0.0091
+iteration=0412 reward=  -0.038 miss=13.344 dup_cost= 0.006 actor_loss= 0.0288
+iteration=0413 reward=  -0.046 miss=35.188 dup_cost= 0.006 actor_loss= 0.0007
+iteration=0414 reward=  -0.124 miss=81.453 dup_cost= 0.008 actor_loss= 0.0072
+iteration=0415 reward=  -0.048 miss=27.148 dup_cost= 0.009 actor_loss=-0.0169
+iteration=0416 reward=  -0.054 miss=19.148 dup_cost= 0.006 actor_loss=-0.0201
+iteration=0417 reward=  -0.090 miss=55.633 dup_cost= 0.009 actor_loss=-0.0188
+iteration=0418 reward=  -0.119 miss=91.695 dup_cost= 0.016 actor_loss= 0.0021
+iteration=0419 reward=  -0.034 miss= 9.062 dup_cost= 0.005 actor_loss= 0.0010
+iteration=0420 reward=  -0.070 miss=40.883 dup_cost= 0.010 actor_loss= 0.0268
+iteration=0421 reward=  -0.062 miss=26.109 dup_cost= 0.014 actor_loss=-0.0083
+iteration=0422 reward=  -0.040 miss=10.750 dup_cost= 0.007 actor_loss=-0.0144
+iteration=0423 reward=  -0.042 miss=24.273 dup_cost= 0.006 actor_loss=-0.0208
+iteration=0424 reward=  -0.093 miss=49.945 dup_cost= 0.007 actor_loss=-0.0065
+iteration=0425 reward=  -0.045 miss=13.789 dup_cost= 0.008 actor_loss=-0.0251
+iteration=0426 reward=  -0.032 miss= 9.672 dup_cost= 0.002 actor_loss= 0.0039
+iteration=0427 reward=  -0.124 miss=93.648 dup_cost= 0.014 actor_loss=-0.0174
+iteration=0428 reward=  -0.059 miss=31.039 dup_cost= 0.015 actor_loss= 0.0024
+iteration=0429 reward=  -0.047 miss=13.969 dup_cost= 0.017 actor_loss= 0.0046
+iteration=0430 reward=  -0.132 miss=101.016 dup_cost= 0.016 actor_loss= 0.0272
+iteration=0431 reward=  -0.103 miss=79.008 dup_cost= 0.026 actor_loss= 0.0089
+iteration=0432 reward=  -0.047 miss= 9.828 dup_cost= 0.025 actor_loss= 0.0136
+iteration=0433 reward=  -0.084 miss=58.094 dup_cost= 0.015 actor_loss=-0.0125
+iteration=0434 reward=  -0.113 miss=102.391 dup_cost= 0.020 actor_loss=-0.0007
+iteration=0435 reward=  -0.047 miss= 9.516 dup_cost= 0.018 actor_loss= 0.0095
+iteration=0436 reward=  -0.051 miss=22.961 dup_cost= 0.012 actor_loss= 0.0207
+iteration=0437 reward=  -0.141 miss=103.000 dup_cost= 0.025 actor_loss=-0.0165
+iteration=0438 reward=  -0.043 miss=18.680 dup_cost= 0.022 actor_loss= 0.0081
+iteration=0439 reward=  -0.056 miss=16.406 dup_cost= 0.019 actor_loss=-0.0025
+iteration=0440 reward=  -0.124 miss=95.242 dup_cost= 0.020 actor_loss=-0.0106
+iteration=0441 reward=  -0.071 miss=46.922 dup_cost= 0.014 actor_loss= 0.0557
+iteration=0442 reward=  -0.039 miss=14.492 dup_cost= 0.017 actor_loss= 0.0034
+iteration=0443 reward=  -0.119 miss=73.820 dup_cost= 0.022 actor_loss=-0.0069
+iteration=0444 reward=  -0.131 miss=112.500 dup_cost= 0.025 actor_loss=-0.0115
+iteration=0445 reward=  -0.067 miss=22.336 dup_cost= 0.020 actor_loss=-0.0330
+iteration=0446 reward=  -0.077 miss=59.688 dup_cost= 0.017 actor_loss=-0.0165
+iteration=0447 reward=  -0.150 miss=112.359 dup_cost= 0.035 actor_loss=-0.0124
+iteration=0448 reward=  -0.062 miss=24.109 dup_cost= 0.023 actor_loss= 0.0161
+iteration=0449 reward=  -0.064 miss=38.859 dup_cost= 0.017 actor_loss=-0.0176
+iteration=0450 reward=  -0.216 miss=200.734 dup_cost= 0.026 actor_loss=-0.0122
+iteration=0451 reward=  -0.104 miss=82.977 dup_cost= 0.028 actor_loss= 0.0390
+iteration=0452 reward=  -0.095 miss=49.602 dup_cost= 0.017 actor_loss= 0.0893
+iteration=0453 reward=  -0.104 miss=69.047 dup_cost= 0.014 actor_loss= 0.0114
+iteration=0454 reward=  -0.052 miss=24.930 dup_cost= 0.025 actor_loss=-0.0034
+iteration=0455 reward=  -0.035 miss= 8.766 dup_cost= 0.018 actor_loss= 0.0378
+iteration=0456 reward=  -0.104 miss=70.766 dup_cost= 0.018 actor_loss=-0.0048
+iteration=0457 reward=  -0.093 miss=62.250 dup_cost= 0.025 actor_loss=-0.0050
+iteration=0458 reward=  -0.037 miss=10.820 dup_cost= 0.013 actor_loss= 0.0278
+iteration=0459 reward=  -0.060 miss=35.320 dup_cost= 0.015 actor_loss=-0.0360
+iteration=0460 reward=  -0.119 miss=73.656 dup_cost= 0.029 actor_loss= 0.0112
+iteration=0461 reward=  -0.056 miss=34.609 dup_cost= 0.017 actor_loss=-0.0112
+iteration=0462 reward=  -0.061 miss=32.344 dup_cost= 0.011 actor_loss= 0.0138
+iteration=0463 reward=  -0.131 miss=88.008 dup_cost= 0.009 actor_loss= 0.0148
+iteration=0464 reward=  -0.045 miss=32.906 dup_cost= 0.006 actor_loss=-0.0002
+iteration=0465 reward=  -0.032 miss=10.695 dup_cost= 0.009 actor_loss=-0.0057
+iteration=0466 reward=  -0.102 miss=64.023 dup_cost= 0.011 actor_loss= 0.0242
+iteration=0467 reward=  -0.077 miss=55.844 dup_cost= 0.019 actor_loss= 0.0245
+iteration=0468 reward=  -0.058 miss=28.336 dup_cost= 0.008 actor_loss=-0.0039
+iteration=0469 reward=  -0.043 miss=24.945 dup_cost= 0.009 actor_loss=-0.0109
+iteration=0470 reward=  -0.085 miss=52.992 dup_cost= 0.006 actor_loss=-0.0099
+iteration=0471 reward=  -0.023 miss=15.852 dup_cost= 0.005 actor_loss=-0.0047
+iteration=0472 reward=  -0.061 miss=43.336 dup_cost= 0.011 actor_loss= 0.0043
+iteration=0473 reward=  -0.156 miss=128.352 dup_cost= 0.014 actor_loss=-0.0129
+iteration=0474 reward=  -0.038 miss=22.711 dup_cost= 0.006 actor_loss= 0.0181
+iteration=0475 reward=  -0.031 miss=15.031 dup_cost= 0.003 actor_loss=-0.0124
+iteration=0476 reward=  -0.100 miss=66.961 dup_cost= 0.006 actor_loss= 0.0209
+iteration=0477 reward=  -0.063 miss=39.461 dup_cost= 0.010 actor_loss=-0.0093
+iteration=0478 reward=  -0.036 miss= 8.438 dup_cost= 0.011 actor_loss= 0.0035
+iteration=0479 reward=  -0.056 miss=40.977 dup_cost= 0.008 actor_loss=-0.0723
+iteration=0480 reward=  -0.071 miss=41.039 dup_cost= 0.006 actor_loss=-0.0076
+iteration=0481 reward=  -0.032 miss=11.016 dup_cost= 0.010 actor_loss= 0.0001
+iteration=0482 reward=  -0.029 miss=21.367 dup_cost= 0.006 actor_loss= 0.0443
+iteration=0483 reward=  -0.132 miss=89.344 dup_cost= 0.012 actor_loss=-0.0055
+iteration=0484 reward=  -0.022 miss= 6.945 dup_cost= 0.008 actor_loss=-0.0563
+iteration=0485 reward=  -0.023 miss= 9.781 dup_cost= 0.003 actor_loss= 0.0018
+iteration=0486 reward=  -0.088 miss=50.281 dup_cost= 0.008 actor_loss=-0.0134
+iteration=0487 reward=  -0.048 miss=35.125 dup_cost= 0.005 actor_loss=-0.0056
+iteration=0488 reward=  -0.022 miss=10.797 dup_cost= 0.004 actor_loss= 0.0585
+iteration=0489 reward=  -0.086 miss=59.953 dup_cost= 0.002 actor_loss= 0.0166
+iteration=0490 reward=  -0.069 miss=55.719 dup_cost= 0.006 actor_loss=-0.0188
+iteration=0491 reward=  -0.034 miss=17.188 dup_cost= 0.003 actor_loss=-0.0035
+iteration=0492 reward=  -0.044 miss=34.297 dup_cost= 0.003 actor_loss=-0.0633
+iteration=0493 reward=  -0.118 miss=90.484 dup_cost= 0.005 actor_loss=-0.0168
+iteration=0494 reward=  -0.035 miss=15.422 dup_cost= 0.002 actor_loss=-0.0199
+iteration=0495 reward=  -0.034 miss=27.039 dup_cost= 0.002 actor_loss=-0.0714
+iteration=0496 reward=  -0.055 miss=23.570 dup_cost= 0.001 actor_loss= 0.0140
+iteration=0497 reward=  -0.006 miss= 3.109 dup_cost= 0.003 actor_loss= 0.0158
+iteration=0498 reward=  -0.029 miss= 6.164 dup_cost= 0.001 actor_loss=-0.0094
+iteration=0499 reward=  -0.115 miss=81.383 dup_cost= 0.006 actor_loss=-0.0131
+iteration=0500 reward=  -0.053 miss=34.391 dup_cost= 0.002 actor_loss= 0.0130
+iteration=0501 reward=  -0.031 miss=17.594 dup_cost= 0.002 actor_loss= 0.0003
+iteration=0502 reward=  -0.068 miss=53.492 dup_cost= 0.007 actor_loss= 0.0162
+iteration=0503 reward=  -0.087 miss=63.250 dup_cost= 0.002 actor_loss=-0.0013
+iteration=0504 reward=  -0.032 miss= 9.352 dup_cost= 0.003 actor_loss= 0.0054
+iteration=0505 reward=  -0.044 miss=37.016 dup_cost= 0.003 actor_loss=-0.0005
+iteration=0506 reward=  -0.112 miss=94.164 dup_cost= 0.002 actor_loss= 0.0346
+iteration=0507 reward=  -0.022 miss=10.195 dup_cost= 0.003 actor_loss=-0.0118
+iteration=0508 reward=  -0.033 miss=19.711 dup_cost= 0.002 actor_loss=-0.0033
+iteration=0509 reward=  -0.119 miss=78.258 dup_cost= 0.002 actor_loss=-0.0229
+iteration=0510 reward=  -0.034 miss=24.539 dup_cost= 0.003 actor_loss=-0.0481
+iteration=0511 reward=  -0.035 miss=16.844 dup_cost= 0.002 actor_loss=-0.0006
+iteration=0512 reward=  -0.099 miss=66.688 dup_cost= 0.004 actor_loss= 0.0036
+iteration=0513 reward=  -0.072 miss=56.016 dup_cost= 0.004 actor_loss= 0.0033
+iteration=0514 reward=  -0.033 miss=10.625 dup_cost= 0.002 actor_loss=-0.0095
+iteration=0515 reward=  -0.064 miss=45.750 dup_cost= 0.003 actor_loss= 0.0046
+iteration=0516 reward=  -0.077 miss=41.625 dup_cost= 0.005 actor_loss=-0.0169
+iteration=0517 reward=  -0.024 miss=10.625 dup_cost= 0.004 actor_loss=-0.0100
+iteration=0518 reward=  -0.047 miss=28.156 dup_cost= 0.002 actor_loss=-0.0298
+iteration=0519 reward=  -0.093 miss=52.266 dup_cost= 0.004 actor_loss=-0.0043
+iteration=0520 reward=  -0.019 miss= 7.820 dup_cost= 0.008 actor_loss= 0.0135
+iteration=0521 reward=  -0.070 miss=58.742 dup_cost= 0.009 actor_loss=-0.0035
+iteration=0522 reward=  -0.121 miss=85.578 dup_cost= 0.005 actor_loss= 0.0250
+iteration=0523 reward=  -0.030 miss=18.625 dup_cost= 0.008 actor_loss=-0.0072
+iteration=0524 reward=  -0.064 miss=24.852 dup_cost= 0.009 actor_loss=-0.0284
+iteration=0525 reward=  -0.062 miss=39.188 dup_cost= 0.003 actor_loss=-0.0055
+iteration=0526 reward=  -0.088 miss=62.594 dup_cost= 0.007 actor_loss=-0.0347
+iteration=0527 reward=  -0.046 miss=20.344 dup_cost= 0.007 actor_loss= 0.0278
+iteration=0528 reward=  -0.039 miss=21.133 dup_cost= 0.005 actor_loss=-0.0067
+iteration=0529 reward=  -0.080 miss=47.602 dup_cost= 0.004 actor_loss= 0.0099
+iteration=0530 reward=  -0.017 miss= 3.969 dup_cost= 0.003 actor_loss=-0.0110
+iteration=0531 reward=  -0.047 miss=25.156 dup_cost= 0.004 actor_loss= 0.0071
+iteration=0532 reward=  -0.129 miss=109.383 dup_cost= 0.004 actor_loss= 0.0025
+iteration=0533 reward=  -0.040 miss=24.406 dup_cost= 0.010 actor_loss=-0.0265
+iteration=0534 reward=  -0.039 miss= 9.109 dup_cost= 0.002 actor_loss=-0.0118
+iteration=0535 reward=  -0.114 miss=69.000 dup_cost= 0.005 actor_loss=-0.0125
+iteration=0536 reward=  -0.079 miss=65.727 dup_cost= 0.003 actor_loss= 0.0236
+iteration=0537 reward=  -0.026 miss=10.852 dup_cost= 0.005 actor_loss= 0.0047
+iteration=0538 reward=  -0.080 miss=66.227 dup_cost= 0.002 actor_loss= 0.0060
+iteration=0539 reward=  -0.105 miss=71.305 dup_cost= 0.008 actor_loss=-0.0065
+iteration=0540 reward=  -0.037 miss= 8.781 dup_cost= 0.002 actor_loss=-0.0087
+iteration=0541 reward=  -0.057 miss=38.852 dup_cost= 0.007 actor_loss= 0.0008
+iteration=0542 reward=  -0.145 miss=118.891 dup_cost= 0.003 actor_loss=-0.0105
+iteration=0543 reward=  -0.041 miss=28.703 dup_cost= 0.005 actor_loss=-0.0115
+iteration=0544 reward=  -0.030 miss=17.477 dup_cost= 0.005 actor_loss=-0.0545
+iteration=0545 reward=  -0.057 miss=34.180 dup_cost= 0.001 actor_loss= 0.0016
+iteration=0546 reward=  -0.038 miss=25.289 dup_cost= 0.002 actor_loss=-0.0038
+iteration=0547 reward=  -0.034 miss=10.367 dup_cost= 0.004 actor_loss= 0.0023
+iteration=0548 reward=  -0.079 miss=48.148 dup_cost= 0.002 actor_loss= 0.0358
+iteration=0549 reward=  -0.051 miss=36.539 dup_cost= 0.003 actor_loss= 0.0027
+iteration=0550 reward=  -0.026 miss=10.172 dup_cost= 0.001 actor_loss= 0.0022
+iteration=0551 reward=  -0.060 miss=34.445 dup_cost= 0.002 actor_loss=-0.0060
+iteration=0552 reward=  -0.075 miss=39.883 dup_cost= 0.001 actor_loss=-0.0167
+iteration=0553 reward=  -0.019 miss= 7.461 dup_cost= 0.002 actor_loss=-0.0031
+iteration=0554 reward=  -0.023 miss= 7.922 dup_cost= 0.001 actor_loss= 0.0210
+iteration=0555 reward=  -0.086 miss=39.984 dup_cost= 0.003 actor_loss=-0.0041
+iteration=0556 reward=  -0.033 miss=25.414 dup_cost= 0.002 actor_loss=-0.0035
+iteration=0557 reward=  -0.015 miss= 1.719 dup_cost= 0.001 actor_loss=-0.0112
+iteration=0558 reward=  -0.110 miss=77.359 dup_cost= 0.004 actor_loss=-0.0125
+iteration=0559 reward=  -0.051 miss=31.758 dup_cost= 0.002 actor_loss=-0.0057
+iteration=0560 reward=  -0.020 miss= 4.172 dup_cost= 0.001 actor_loss= 0.0022
+iteration=0561 reward=  -0.044 miss=23.461 dup_cost= 0.003 actor_loss=-0.0021
+iteration=0562 reward=  -0.047 miss=22.234 dup_cost= 0.003 actor_loss= 0.0374
+iteration=0563 reward=  -0.067 miss=33.461 dup_cost= 0.003 actor_loss=-0.0121
+iteration=0564 reward=  -0.041 miss=25.047 dup_cost= 0.007 actor_loss= 0.0035
+iteration=0565 reward=  -0.129 miss=109.836 dup_cost= 0.002 actor_loss= 0.0049
+iteration=0566 reward=  -0.035 miss=24.445 dup_cost= 0.008 actor_loss=-0.0128
+iteration=0567 reward=  -0.056 miss=29.180 dup_cost= 0.006 actor_loss=-0.0111
+iteration=0568 reward=  -0.116 miss=85.539 dup_cost= 0.007 actor_loss=-0.0138
+iteration=0569 reward=  -0.045 miss=23.930 dup_cost= 0.006 actor_loss= 0.0185
+iteration=0570 reward=  -0.050 miss=20.102 dup_cost= 0.011 actor_loss= 0.0149
+iteration=0571 reward=  -0.134 miss=107.109 dup_cost= 0.005 actor_loss=-0.0080
+iteration=0572 reward=  -0.082 miss=62.289 dup_cost= 0.009 actor_loss=-0.0012
+iteration=0573 reward=  -0.048 miss=22.781 dup_cost= 0.011 actor_loss= 0.0002
+iteration=0574 reward=  -0.066 miss=50.477 dup_cost= 0.007 actor_loss=-0.0034
+iteration=0575 reward=  -0.135 miss=115.328 dup_cost= 0.007 actor_loss=-0.0051
+iteration=0576 reward=  -0.025 miss=13.523 dup_cost= 0.004 actor_loss= 0.0287
+iteration=0577 reward=  -0.035 miss=21.117 dup_cost= 0.005 actor_loss=-0.0069
+iteration=0578 reward=  -0.097 miss=64.336 dup_cost= 0.004 actor_loss=-0.0032
+iteration=0579 reward=  -0.050 miss=29.297 dup_cost= 0.003 actor_loss=-0.0113
+iteration=0580 reward=  -0.026 miss= 9.016 dup_cost= 0.003 actor_loss=-0.0009
+iteration=0581 reward=  -0.114 miss=91.258 dup_cost= 0.007 actor_loss= 0.0128
+iteration=0582 reward=  -0.077 miss=63.664 dup_cost= 0.005 actor_loss=-0.0156
+iteration=0583 reward=  -0.041 miss=16.602 dup_cost= 0.002 actor_loss= 0.0664
+iteration=0584 reward=  -0.050 miss=30.500 dup_cost= 0.004 actor_loss= 0.0313
+iteration=0585 reward=  -0.116 miss=85.234 dup_cost= 0.002 actor_loss=-0.0098
+iteration=0586 reward=  -0.038 miss=24.891 dup_cost= 0.002 actor_loss=-0.0111
+iteration=0587 reward=  -0.052 miss=40.484 dup_cost= 0.004 actor_loss=-0.0477
+iteration=0588 reward=  -0.111 miss=88.320 dup_cost= 0.000 actor_loss=-0.0219
+iteration=0589 reward=  -0.046 miss=19.312 dup_cost= 0.003 actor_loss=-0.0032
+iteration=0590 reward=  -0.043 miss=18.383 dup_cost= 0.002 actor_loss=-0.0135
+iteration=0591 reward=  -0.090 miss=57.234 dup_cost= 0.002 actor_loss=-0.0064
+iteration=0592 reward=  -0.048 miss=30.312 dup_cost= 0.004 actor_loss=-0.0098
+iteration=0593 reward=  -0.046 miss=21.102 dup_cost= 0.003 actor_loss= 0.0048
+iteration=0594 reward=  -0.107 miss=78.406 dup_cost= 0.005 actor_loss=-0.0058
+iteration=0595 reward=  -0.088 miss=73.914 dup_cost= 0.006 actor_loss= 0.0139
+iteration=0596 reward=  -0.030 miss=10.961 dup_cost= 0.005 actor_loss= 0.0033
+iteration=0597 reward=  -0.084 miss=55.352 dup_cost= 0.003 actor_loss=-0.0151
+iteration=0598 reward=  -0.147 miss=121.273 dup_cost= 0.004 actor_loss= 0.0006
+iteration=0599 reward=  -0.039 miss=15.906 dup_cost= 0.003 actor_loss= 0.0018
+iteration=0600 reward=  -0.042 miss=16.891 dup_cost= 0.003 actor_loss=-0.0005
+iteration=0601 reward=  -0.146 miss=110.430 dup_cost= 0.002 actor_loss= 0.0482
+iteration=0602 reward=  -0.030 miss=20.820 dup_cost= 0.003 actor_loss=-0.0025
+iteration=0603 reward=  -0.019 miss= 7.453 dup_cost= 0.001 actor_loss=-0.0099
+iteration=0604 reward=  -0.131 miss=89.109 dup_cost= 0.002 actor_loss= 0.0049
+iteration=0605 reward=  -0.060 miss=51.312 dup_cost= 0.003 actor_loss= 0.0132
+iteration=0606 reward=  -0.033 miss=20.211 dup_cost= 0.006 actor_loss= 0.0296
+iteration=0607 reward=  -0.051 miss=28.164 dup_cost= 0.003 actor_loss=-0.0066
+iteration=0608 reward=  -0.083 miss=61.562 dup_cost= 0.002 actor_loss=-0.0187
+iteration=0609 reward=  -0.046 miss=25.383 dup_cost= 0.004 actor_loss= 0.0063
+iteration=0610 reward=  -0.049 miss=37.070 dup_cost= 0.007 actor_loss= 0.0038
+iteration=0611 reward=  -0.082 miss=54.094 dup_cost= 0.003 actor_loss=-0.0027
+iteration=0612 reward=  -0.028 miss= 7.516 dup_cost= 0.002 actor_loss=-0.0136
+iteration=0613 reward=  -0.023 miss=16.188 dup_cost= 0.003 actor_loss=-0.0116
+iteration=0614 reward=  -0.084 miss=54.180 dup_cost= 0.000 actor_loss=-0.0001
+iteration=0615 reward=  -0.042 miss=25.633 dup_cost= 0.002 actor_loss=-0.0045
+iteration=0616 reward=  -0.029 miss=10.406 dup_cost= 0.000 actor_loss=-0.0123
+iteration=0617 reward=  -0.072 miss=37.969 dup_cost= 0.001 actor_loss= 0.0468
+iteration=0618 reward=  -0.058 miss=44.859 dup_cost= 0.001 actor_loss= 0.0015
+iteration=0619 reward=  -0.017 miss=10.039 dup_cost= 0.003 actor_loss=-0.0486
+iteration=0620 reward=  -0.066 miss=46.047 dup_cost= 0.001 actor_loss=-0.0132
+iteration=0621 reward=  -0.104 miss=89.734 dup_cost= 0.003 actor_loss=-0.0074
+iteration=0622 reward=  -0.045 miss=12.000 dup_cost= 0.003 actor_loss=-0.0124
+iteration=0623 reward=  -0.034 miss=21.398 dup_cost= 0.002 actor_loss=-0.0029
+iteration=0624 reward=  -0.146 miss=100.484 dup_cost= 0.003 actor_loss= 0.0066
+iteration=0625 reward=  -0.034 miss=15.523 dup_cost= 0.002 actor_loss= 0.0462
+iteration=0626 reward=  -0.031 miss=14.047 dup_cost= 0.001 actor_loss= 0.0019
+iteration=0627 reward=  -0.090 miss=45.758 dup_cost= 0.002 actor_loss= 0.0278
+iteration=0628 reward=  -0.051 miss=30.633 dup_cost= 0.001 actor_loss= 0.0055
+iteration=0629 reward=  -0.035 miss=19.617 dup_cost= 0.001 actor_loss= 0.0070
+iteration=0630 reward=  -0.098 miss=63.227 dup_cost= 0.002 actor_loss= 0.0270
+iteration=0631 reward=  -0.061 miss=35.398 dup_cost= 0.000 actor_loss= 0.0261
+iteration=0632 reward=  -0.016 miss= 6.438 dup_cost= 0.001 actor_loss= 0.0041
+iteration=0633 reward=  -0.061 miss=30.352 dup_cost= 0.005 actor_loss= 0.0080
+iteration=0634 reward=  -0.094 miss=43.172 dup_cost= 0.002 actor_loss= 0.0082
+iteration=0635 reward=  -0.015 miss=11.062 dup_cost= 0.001 actor_loss= 0.0116
+iteration=0636 reward=  -0.014 miss= 5.055 dup_cost= 0.002 actor_loss= 0.0021
+iteration=0637 reward=  -0.069 miss=29.453 dup_cost= 0.001 actor_loss=-0.0209
+iteration=0638 reward=  -0.039 miss=26.789 dup_cost= 0.002 actor_loss=-0.0014
+iteration=0639 reward=  -0.017 miss= 8.641 dup_cost= 0.001 actor_loss=-0.0065
+iteration=0640 reward=  -0.078 miss=44.375 dup_cost= 0.001 actor_loss=-0.0035
+iteration=0641 reward=  -0.039 miss=26.523 dup_cost= 0.000 actor_loss= 0.0041
+iteration=0642 reward=  -0.026 miss= 4.836 dup_cost= 0.001 actor_loss= 0.0075
+iteration=0643 reward=  -0.054 miss=40.102 dup_cost= 0.001 actor_loss=-0.0074
+iteration=0644 reward=  -0.086 miss=50.289 dup_cost= 0.001 actor_loss= 0.0063
+iteration=0645 reward=  -0.019 miss= 7.227 dup_cost= 0.000 actor_loss= 0.0059
+iteration=0646 reward=  -0.047 miss=33.547 dup_cost= 0.000 actor_loss=-0.0112
+iteration=0647 reward=  -0.100 miss=72.992 dup_cost= 0.000 actor_loss=-0.0022
+iteration=0648 reward=  -0.033 miss=15.359 dup_cost= 0.001 actor_loss=-0.0145
+iteration=0649 reward=  -0.050 miss=28.641 dup_cost= 0.000 actor_loss=-0.0400
+iteration=0650 reward=  -0.082 miss=48.547 dup_cost= 0.001 actor_loss=-0.0025
+iteration=0651 reward=  -0.054 miss=33.742 dup_cost= 0.000 actor_loss=-0.0078
+iteration=0652 reward=  -0.034 miss=18.312 dup_cost= 0.001 actor_loss=-0.0093
+iteration=0653 reward=  -0.095 miss=66.820 dup_cost= 0.000 actor_loss=-0.0093
+iteration=0654 reward=  -0.070 miss=48.227 dup_cost= 0.000 actor_loss=-0.0098
+iteration=0655 reward=  -0.064 miss=32.617 dup_cost= 0.000 actor_loss= 0.0002
+iteration=0656 reward=  -0.036 miss=17.664 dup_cost= 0.000 actor_loss=-0.0083
+iteration=0657 reward=  -0.071 miss=39.594 dup_cost= 0.000 actor_loss=-0.0497
+iteration=0658 reward=  -0.047 miss=18.625 dup_cost= 0.001 actor_loss=-0.1136
+iteration=0659 reward=  -0.038 miss=21.344 dup_cost= 0.002 actor_loss= 0.0177
+iteration=0660 reward=  -0.169 miss=174.789 dup_cost= 0.003 actor_loss= 0.0169
+iteration=0661 reward=  -0.070 miss=64.164 dup_cost= 0.001 actor_loss= 0.0051
+iteration=0662 reward=  -0.040 miss=21.305 dup_cost= 0.001 actor_loss= 0.0063
+iteration=0663 reward=  -0.160 miss=126.461 dup_cost= 0.003 actor_loss=-0.0271
+iteration=0664 reward=  -0.078 miss=80.328 dup_cost= 0.002 actor_loss= 0.0025
+iteration=0665 reward=  -0.034 miss= 9.688 dup_cost= 0.000 actor_loss= 0.0311
+iteration=0666 reward=  -0.094 miss=66.219 dup_cost= 0.000 actor_loss=-0.0213
+iteration=0667 reward=  -0.108 miss=72.977 dup_cost= 0.001 actor_loss= 0.0014
+iteration=0668 reward=  -0.037 miss=14.375 dup_cost= 0.000 actor_loss=-0.0190
+iteration=0669 reward=  -0.043 miss=29.281 dup_cost= 0.001 actor_loss=-0.0176
+iteration=0670 reward=  -0.102 miss=65.102 dup_cost= 0.000 actor_loss= 0.0008
+iteration=0671 reward=  -0.040 miss=16.664 dup_cost= 0.000 actor_loss=-0.0020
+iteration=0672 reward=  -0.030 miss=10.828 dup_cost= 0.000 actor_loss=-0.0182
+iteration=0673 reward=  -0.120 miss=76.297 dup_cost= 0.000 actor_loss= 0.0217
+iteration=0674 reward=  -0.067 miss=34.031 dup_cost= 0.001 actor_loss=-0.0128
+iteration=0675 reward=  -0.030 miss=13.516 dup_cost= 0.000 actor_loss=-0.0058
+iteration=0676 reward=  -0.061 miss=30.602 dup_cost= 0.003 actor_loss=-0.0138
+iteration=0677 reward=  -0.050 miss=34.469 dup_cost= 0.002 actor_loss=-0.0037
+iteration=0678 reward=  -0.042 miss=13.375 dup_cost= 0.000 actor_loss= 0.0295
+iteration=0679 reward=  -0.047 miss=32.445 dup_cost= 0.001 actor_loss= 0.0351
+iteration=0680 reward=  -0.119 miss=106.000 dup_cost= 0.002 actor_loss= 0.0514
+iteration=0681 reward=  -0.021 miss= 6.094 dup_cost= 0.000 actor_loss= 0.0006
+iteration=0682 reward=  -0.026 miss=11.188 dup_cost= 0.001 actor_loss=-0.0087
+iteration=0683 reward=  -0.070 miss=32.945 dup_cost= 0.000 actor_loss=-0.0016
+iteration=0684 reward=  -0.035 miss=21.336 dup_cost= 0.001 actor_loss=-0.0284
+iteration=0685 reward=  -0.030 miss= 9.695 dup_cost= 0.000 actor_loss=-0.0160
+iteration=0686 reward=  -0.058 miss=32.359 dup_cost= 0.000 actor_loss= 0.0335
+iteration=0687 reward=  -0.048 miss=25.844 dup_cost= 0.000 actor_loss= 0.0602
+iteration=0688 reward=  -0.017 miss=12.328 dup_cost= 0.001 actor_loss=-0.0189
+iteration=0689 reward=  -0.060 miss=39.281 dup_cost= 0.000 actor_loss= 0.0030
+iteration=0690 reward=  -0.043 miss=20.789 dup_cost= 0.000 actor_loss=-0.0272
+iteration=0691 reward=  -0.033 miss=17.656 dup_cost= 0.001 actor_loss=-0.0113
+iteration=0692 reward=  -0.022 miss=13.047 dup_cost= 0.001 actor_loss=-0.0065
+iteration=0693 reward=  -0.106 miss=67.227 dup_cost= 0.001 actor_loss=-0.0025
+iteration=0694 reward=  -0.033 miss=17.688 dup_cost= 0.001 actor_loss=-0.0045
+iteration=0695 reward=  -0.046 miss=28.602 dup_cost= 0.000 actor_loss=-0.0213
+iteration=0696 reward=  -0.067 miss=38.375 dup_cost= 0.000 actor_loss= 0.0924
+iteration=0697 reward=  -0.039 miss=23.594 dup_cost= 0.000 actor_loss=-0.0155
+iteration=0698 reward=  -0.028 miss= 9.859 dup_cost= 0.001 actor_loss= 0.0171
+iteration=0699 reward=  -0.104 miss=71.750 dup_cost= 0.001 actor_loss=-0.0057
+iteration=0700 reward=  -0.038 miss=23.578 dup_cost= 0.000 actor_loss= 0.0675
+iteration=0701 reward=  -0.014 miss= 6.008 dup_cost= 0.000 actor_loss=-0.0004
+iteration=0702 reward=  -0.053 miss=31.703 dup_cost= 0.001 actor_loss=-0.1029
+iteration=0703 reward=  -0.073 miss=53.328 dup_cost= 0.001 actor_loss=-0.0043
+iteration=0704 reward=  -0.014 miss= 7.484 dup_cost= 0.000 actor_loss= 0.0346
+iteration=0705 reward=  -0.038 miss=23.016 dup_cost= 0.001 actor_loss=-0.0108
+iteration=0706 reward=  -0.110 miss=79.273 dup_cost= 0.000 actor_loss= 0.0093
+iteration=0707 reward=  -0.029 miss=14.273 dup_cost= 0.000 actor_loss= 0.0012
+iteration=0708 reward=  -0.017 miss= 7.477 dup_cost= 0.000 actor_loss= 0.0164
+iteration=0709 reward=  -0.109 miss=74.836 dup_cost= 0.002 actor_loss=-0.0048
+iteration=0710 reward=  -0.025 miss=15.641 dup_cost= 0.003 actor_loss= 0.1682
+iteration=0711 reward=  -0.026 miss=13.930 dup_cost= 0.001 actor_loss=-0.0265
+iteration=0712 reward=  -0.046 miss=23.625 dup_cost= 0.000 actor_loss=-0.0143
+iteration=0713 reward=  -0.078 miss=50.047 dup_cost= 0.001 actor_loss=-0.0076
+iteration=0714 reward=  -0.037 miss=14.766 dup_cost= 0.002 actor_loss= 0.0464
+iteration=0715 reward=  -0.054 miss=38.844 dup_cost= 0.001 actor_loss=-0.0246
+iteration=0716 reward=  -0.087 miss=56.109 dup_cost= 0.000 actor_loss= 0.0007
+iteration=0717 reward=  -0.010 miss= 6.711 dup_cost= 0.000 actor_loss= 0.0164
+iteration=0718 reward=  -0.008 miss= 6.836 dup_cost= 0.001 actor_loss=-0.0184
+iteration=0719 reward=  -0.092 miss=52.055 dup_cost= 0.001 actor_loss= 0.0131
+iteration=0720 reward=  -0.024 miss=17.719 dup_cost= 0.001 actor_loss=-0.0044
+iteration=0721 reward=  -0.043 miss=14.289 dup_cost= 0.001 actor_loss= 0.0118
+iteration=0722 reward=  -0.081 miss=52.094 dup_cost= 0.000 actor_loss=-0.0254
+iteration=0723 reward=  -0.025 miss=13.359 dup_cost= 0.002 actor_loss=-0.0019
+iteration=0724 reward=  -0.011 miss= 2.344 dup_cost= 0.001 actor_loss=-0.0130
+iteration=0725 reward=  -0.044 miss=25.586 dup_cost= 0.000 actor_loss=-0.0075
+iteration=0726 reward=  -0.075 miss=43.938 dup_cost= 0.000 actor_loss= 0.0069
+iteration=0727 reward=  -0.015 miss= 6.070 dup_cost= 0.000 actor_loss= 0.0032
+iteration=0728 reward=  -0.039 miss=26.797 dup_cost= 0.000 actor_loss=-0.0134
+iteration=0729 reward=  -0.084 miss=48.000 dup_cost= 0.000 actor_loss= 0.0115
+iteration=0730 reward=  -0.033 miss=23.062 dup_cost= 0.001 actor_loss=-0.0005
+iteration=0731 reward=  -0.023 miss= 8.609 dup_cost= 0.001 actor_loss= 0.0285
+iteration=0732 reward=  -0.106 miss=73.477 dup_cost= 0.001 actor_loss= 0.0069
+iteration=0733 reward=  -0.071 miss=48.594 dup_cost= 0.000 actor_loss= 0.0027
+iteration=0734 reward=  -0.026 miss=14.625 dup_cost= 0.000 actor_loss= 0.0361
+iteration=0735 reward=  -0.081 miss=61.312 dup_cost= 0.000 actor_loss= 0.1236
+iteration=0736 reward=  -0.064 miss=38.172 dup_cost= 0.001 actor_loss=-0.0030
+iteration=0737 reward=  -0.039 miss=19.641 dup_cost= 0.001 actor_loss=-0.0083
+iteration=0738 reward=  -0.046 miss=28.547 dup_cost= 0.000 actor_loss=-0.0064
+iteration=0739 reward=  -0.069 miss=37.016 dup_cost= 0.001 actor_loss= 0.0053
+iteration=0740 reward=  -0.032 miss=11.711 dup_cost= 0.000 actor_loss= 0.0681
+iteration=0741 reward=  -0.056 miss=42.852 dup_cost= 0.000 actor_loss=-0.0055
+iteration=0742 reward=  -0.093 miss=56.383 dup_cost= 0.001 actor_loss=-0.0005
+iteration=0743 reward=  -0.035 miss=24.141 dup_cost= 0.000 actor_loss= 0.0011
+iteration=0744 reward=  -0.020 miss= 7.734 dup_cost= 0.001 actor_loss= 0.0242
+iteration=0745 reward=  -0.085 miss=49.234 dup_cost= 0.001 actor_loss=-0.0153
+iteration=0746 reward=  -0.040 miss=35.711 dup_cost= 0.000 actor_loss=-0.0242
+iteration=0747 reward=  -0.023 miss=10.609 dup_cost= 0.000 actor_loss=-0.0227
+iteration=0748 reward=  -0.052 miss=29.727 dup_cost= 0.000 actor_loss= 0.0025
+iteration=0749 reward=  -0.073 miss=57.484 dup_cost= 0.000 actor_loss=-0.0200
+iteration=0750 reward=  -0.019 miss= 6.562 dup_cost= 0.001 actor_loss= 0.0469
+iteration=0751 reward=  -0.024 miss=26.531 dup_cost= 0.001 actor_loss= 0.0462
+iteration=0752 reward=  -0.086 miss=62.523 dup_cost= 0.001 actor_loss=-0.0376
+iteration=0753 reward=  -0.024 miss=14.594 dup_cost= 0.000 actor_loss=-0.0068
+iteration=0754 reward=  -0.026 miss=15.383 dup_cost= 0.000 actor_loss=-0.0121
+iteration=0755 reward=  -0.077 miss=36.586 dup_cost= 0.002 actor_loss= 0.0006
+iteration=0756 reward=  -0.027 miss=16.195 dup_cost= 0.001 actor_loss= 0.0096
+iteration=0757 reward=  -0.035 miss=16.945 dup_cost= 0.001 actor_loss=-0.0073
+iteration=0758 reward=  -0.055 miss=23.852 dup_cost= 0.002 actor_loss= 0.0059
+iteration=0759 reward=  -0.028 miss=14.711 dup_cost= 0.001 actor_loss=-0.0090
+iteration=0760 reward=  -0.013 miss= 5.539 dup_cost= 0.001 actor_loss=-0.0141
+iteration=0761 reward=  -0.063 miss=37.969 dup_cost= 0.001 actor_loss=-0.0144
+iteration=0762 reward=  -0.084 miss=55.930 dup_cost= 0.001 actor_loss=-0.0046
+iteration=0763 reward=  -0.017 miss= 5.234 dup_cost= 0.002 actor_loss=-0.0071
+iteration=0764 reward=  -0.029 miss=19.727 dup_cost= 0.000 actor_loss= 0.0020
+iteration=0765 reward=  -0.081 miss=60.391 dup_cost= 0.002 actor_loss= 0.0569
+iteration=0766 reward=  -0.032 miss=23.320 dup_cost= 0.001 actor_loss= 0.0246
+iteration=0767 reward=  -0.025 miss=11.844 dup_cost= 0.003 actor_loss=-0.0118
+iteration=0768 reward=  -0.062 miss=39.648 dup_cost= 0.001 actor_loss= 0.0317
+iteration=0769 reward=  -0.035 miss=19.234 dup_cost= 0.003 actor_loss= 0.0213
+iteration=0770 reward=  -0.017 miss= 5.547 dup_cost= 0.003 actor_loss=-0.0077
+iteration=0771 reward=  -0.049 miss=31.344 dup_cost= 0.000 actor_loss=-0.0251
+iteration=0772 reward=  -0.097 miss=70.305 dup_cost= 0.002 actor_loss=-0.0240
+iteration=0773 reward=  -0.023 miss=11.523 dup_cost= 0.001 actor_loss= 0.0745
+iteration=0774 reward=  -0.056 miss=42.266 dup_cost= 0.003 actor_loss=-0.0220
+iteration=0775 reward=  -0.152 miss=113.898 dup_cost= 0.001 actor_loss=-0.0106
+iteration=0776 reward=  -0.022 miss=11.242 dup_cost= 0.004 actor_loss=-0.0089
+iteration=0777 reward=  -0.020 miss= 5.586 dup_cost= 0.002 actor_loss=-0.0666
+iteration=0778 reward=  -0.094 miss=63.312 dup_cost= 0.002 actor_loss=-0.0156
+iteration=0779 reward=  -0.041 miss=33.312 dup_cost= 0.003 actor_loss= 0.0056
+iteration=0780 reward=  -0.023 miss=12.383 dup_cost= 0.003 actor_loss= 0.0274
+iteration=0781 reward=  -0.055 miss=19.820 dup_cost= 0.001 actor_loss=-0.0034
+iteration=0782 reward=  -0.035 miss=20.094 dup_cost= 0.004 actor_loss= 0.0230
+iteration=0783 reward=  -0.012 miss= 5.734 dup_cost= 0.001 actor_loss= 0.0395
+iteration=0784 reward=  -0.061 miss=34.273 dup_cost= 0.003 actor_loss= 0.0940
+iteration=0785 reward=  -0.139 miss=112.609 dup_cost= 0.009 actor_loss= 0.0025
+iteration=0786 reward=  -0.041 miss=17.961 dup_cost= 0.003 actor_loss=-0.0377
+iteration=0787 reward=  -0.017 miss= 6.328 dup_cost= 0.003 actor_loss= 0.0511
+iteration=0788 reward=  -0.086 miss=69.812 dup_cost= 0.004 actor_loss=-0.0040
+iteration=0789 reward=  -0.027 miss=19.914 dup_cost= 0.001 actor_loss= 0.0331
+iteration=0790 reward=  -0.028 miss=10.047 dup_cost= 0.003 actor_loss=-0.0149
+iteration=0791 reward=  -0.078 miss=42.711 dup_cost= 0.004 actor_loss= 0.0068
+iteration=0792 reward=  -0.042 miss=24.711 dup_cost= 0.006 actor_loss=-0.0070
+iteration=0793 reward=  -0.041 miss=13.734 dup_cost= 0.002 actor_loss=-0.0014
+iteration=0794 reward=  -0.056 miss=39.727 dup_cost= 0.002 actor_loss=-0.0073
+iteration=0795 reward=  -0.062 miss=35.062 dup_cost= 0.003 actor_loss=-0.0329
+iteration=0796 reward=  -0.018 miss= 7.070 dup_cost= 0.006 actor_loss= 0.0223
+iteration=0797 reward=  -0.057 miss=44.719 dup_cost= 0.005 actor_loss=-0.0158
+iteration=0798 reward=  -0.108 miss=79.570 dup_cost= 0.006 actor_loss=-0.0085
+iteration=0799 reward=  -0.014 miss= 8.914 dup_cost= 0.004 actor_loss=-0.0065
+iteration=0800 reward=  -0.021 miss= 9.625 dup_cost= 0.004 actor_loss= 0.0349
+iteration=0801 reward=  -0.115 miss=88.266 dup_cost= 0.006 actor_loss=-0.0127
+iteration=0802 reward=  -0.055 miss=41.641 dup_cost= 0.006 actor_loss= 0.0153
+iteration=0803 reward=  -0.035 miss=17.383 dup_cost= 0.008 actor_loss=-0.0105
+iteration=0804 reward=  -0.115 miss=81.500 dup_cost= 0.004 actor_loss= 0.0109
+iteration=0805 reward=  -0.057 miss=41.383 dup_cost= 0.004 actor_loss= 0.0016
+iteration=0806 reward=  -0.037 miss= 9.812 dup_cost= 0.004 actor_loss= 0.0451
+iteration=0807 reward=  -0.037 miss=23.539 dup_cost= 0.003 actor_loss= 0.0316
+iteration=0808 reward=  -0.080 miss=43.477 dup_cost= 0.007 actor_loss=-0.0119
+iteration=0809 reward=  -0.011 miss= 6.938 dup_cost= 0.002 actor_loss= 0.0029
+iteration=0810 reward=  -0.037 miss=23.758 dup_cost= 0.001 actor_loss= 0.0410
+iteration=0811 reward=  -0.126 miss=104.578 dup_cost= 0.005 actor_loss=-0.0053
+iteration=0812 reward=  -0.058 miss=34.688 dup_cost= 0.003 actor_loss=-0.0103
+iteration=0813 reward=  -0.052 miss=13.820 dup_cost= 0.002 actor_loss=-0.0114
+iteration=0814 reward=  -0.093 miss=71.031 dup_cost= 0.005 actor_loss=-0.0129
+iteration=0815 reward=  -0.041 miss=22.773 dup_cost= 0.003 actor_loss=-0.0071
+iteration=0816 reward=  -0.036 miss=17.203 dup_cost= 0.001 actor_loss=-0.0097
+iteration=0817 reward=  -0.076 miss=38.383 dup_cost= 0.004 actor_loss= 0.0046
+iteration=0818 reward=  -0.033 miss=13.078 dup_cost= 0.003 actor_loss=-0.0017
+iteration=0819 reward=  -0.033 miss=17.727 dup_cost= 0.001 actor_loss= 0.2135
+iteration=0820 reward=  -0.025 miss=10.414 dup_cost= 0.004 actor_loss=-0.0018
+iteration=0821 reward=  -0.111 miss=89.281 dup_cost= 0.004 actor_loss= 0.0403
+iteration=0822 reward=  -0.008 miss= 7.852 dup_cost= 0.002 actor_loss=-0.0199
+iteration=0823 reward=  -0.015 miss= 7.828 dup_cost= 0.002 actor_loss= 0.0050
+iteration=0824 reward=  -0.079 miss=52.344 dup_cost= 0.002 actor_loss= 0.0013
+iteration=0825 reward=  -0.030 miss=17.734 dup_cost= 0.001 actor_loss= 0.0116
+iteration=0826 reward=  -0.008 miss= 2.625 dup_cost= 0.002 actor_loss=-0.0124
+iteration=0827 reward=  -0.095 miss=61.406 dup_cost= 0.004 actor_loss= 0.0246
+iteration=0828 reward=  -0.060 miss=45.227 dup_cost= 0.003 actor_loss= 0.0253
+iteration=0829 reward=  -0.029 miss=12.180 dup_cost= 0.001 actor_loss=-0.0053
+iteration=0830 reward=  -0.034 miss=14.930 dup_cost= 0.003 actor_loss=-0.0109
+iteration=0831 reward=  -0.061 miss=34.398 dup_cost= 0.002 actor_loss= 0.0599
+iteration=0832 reward=  -0.032 miss=14.688 dup_cost= 0.002 actor_loss= 0.0179
+iteration=0833 reward=  -0.067 miss=43.305 dup_cost= 0.001 actor_loss=-0.0155
+iteration=0834 reward=  -0.164 miss=134.398 dup_cost= 0.012 actor_loss=-0.0151
+iteration=0835 reward=  -0.029 miss=16.734 dup_cost= 0.002 actor_loss= 0.0385
+iteration=0836 reward=  -0.020 miss= 3.742 dup_cost= 0.003 actor_loss= 0.0107
+iteration=0837 reward=  -0.113 miss=73.062 dup_cost= 0.009 actor_loss= 0.0136
+iteration=0838 reward=  -0.028 miss= 9.289 dup_cost= 0.006 actor_loss=-0.0132
+iteration=0839 reward=  -0.027 miss= 4.977 dup_cost= 0.002 actor_loss=-0.0052
+iteration=0840 reward=  -0.052 miss=28.008 dup_cost= 0.004 actor_loss= 0.0925
+iteration=0841 reward=  -0.038 miss=16.516 dup_cost= 0.002 actor_loss=-0.0212
+iteration=0842 reward=  -0.035 miss=11.992 dup_cost= 0.002 actor_loss=-0.0095
+iteration=0843 reward=  -0.039 miss=21.203 dup_cost= 0.002 actor_loss=-0.0115
+iteration=0844 reward=  -0.090 miss=61.195 dup_cost= 0.007 actor_loss=-0.0172
+iteration=0845 reward=  -0.018 miss= 8.703 dup_cost= 0.002 actor_loss= 0.0111
+iteration=0846 reward=  -0.018 miss= 4.914 dup_cost= 0.003 actor_loss= 0.0025
+iteration=0847 reward=  -0.070 miss=34.828 dup_cost= 0.003 actor_loss= 0.0047
+iteration=0848 reward=  -0.033 miss=17.398 dup_cost= 0.004 actor_loss=-0.0373
+iteration=0849 reward=  -0.022 miss= 5.797 dup_cost= 0.001 actor_loss= 0.0710
+iteration=0850 reward=  -0.082 miss=51.039 dup_cost= 0.002 actor_loss=-0.0015
+iteration=0851 reward=  -0.023 miss=11.336 dup_cost= 0.001 actor_loss=-0.0399
+iteration=0852 reward=  -0.031 miss=11.469 dup_cost= 0.001 actor_loss= 0.0045
+iteration=0853 reward=  -0.064 miss=30.047 dup_cost= 0.003 actor_loss=-0.0036
+iteration=0854 reward=  -0.066 miss=41.312 dup_cost= 0.003 actor_loss=-0.0000
+iteration=0855 reward=  -0.025 miss= 9.047 dup_cost= 0.002 actor_loss= 0.0307
+iteration=0856 reward=  -0.030 miss= 9.867 dup_cost= 0.001 actor_loss= 0.0016
+iteration=0857 reward=  -0.068 miss=44.734 dup_cost= 0.003 actor_loss=-0.0088
+iteration=0858 reward=  -0.005 miss= 3.219 dup_cost= 0.002 actor_loss=-0.0186
+iteration=0859 reward=  -0.025 miss=14.797 dup_cost= 0.001 actor_loss= 0.0017
+iteration=0860 reward=  -0.102 miss=50.875 dup_cost= 0.002 actor_loss= 0.0143
+iteration=0861 reward=  -0.025 miss=13.742 dup_cost= 0.002 actor_loss=-0.0145
+iteration=0862 reward=  -0.021 miss= 9.078 dup_cost= 0.001 actor_loss= 0.0013
+iteration=0863 reward=  -0.049 miss=26.461 dup_cost= 0.002 actor_loss=-0.0151
+iteration=0864 reward=  -0.054 miss=41.125 dup_cost= 0.002 actor_loss=-0.0094
+iteration=0865 reward=  -0.022 miss= 7.938 dup_cost= 0.004 actor_loss=-0.0161
+iteration=0866 reward=  -0.043 miss=14.773 dup_cost= 0.001 actor_loss= 0.0129
+iteration=0867 reward=  -0.078 miss=47.070 dup_cost= 0.001 actor_loss= 0.0052
+iteration=0868 reward=  -0.012 miss= 6.898 dup_cost= 0.001 actor_loss=-0.0080
+iteration=0869 reward=  -0.047 miss=30.758 dup_cost= 0.001 actor_loss=-0.0127
+iteration=0870 reward=  -0.049 miss=22.016 dup_cost= 0.002 actor_loss= 0.0277
+iteration=0871 reward=  -0.026 miss=21.320 dup_cost= 0.002 actor_loss=-0.0126
+iteration=0872 reward=  -0.027 miss=10.953 dup_cost= 0.000 actor_loss=-0.0025
+iteration=0873 reward=  -0.082 miss=44.922 dup_cost= 0.001 actor_loss=-0.0090
+iteration=0874 reward=  -0.060 miss=36.148 dup_cost= 0.006 actor_loss= 0.0026
+iteration=0875 reward=  -0.043 miss=21.727 dup_cost= 0.002 actor_loss= 0.0046
+iteration=0876 reward=  -0.037 miss=23.883 dup_cost= 0.002 actor_loss= 0.0400
+iteration=0877 reward=  -0.082 miss=52.547 dup_cost= 0.001 actor_loss=-0.0029
+iteration=0878 reward=  -0.028 miss=12.375 dup_cost= 0.004 actor_loss=-0.0184
+iteration=0879 reward=  -0.038 miss=20.336 dup_cost= 0.003 actor_loss= 0.0175
+iteration=0880 reward=  -0.085 miss=49.992 dup_cost= 0.006 actor_loss= 0.0088
+iteration=0881 reward=  -0.041 miss=16.492 dup_cost= 0.005 actor_loss=-0.0108
+iteration=0882 reward=  -0.028 miss= 6.906 dup_cost= 0.002 actor_loss= 0.0168
+iteration=0883 reward=  -0.086 miss=39.273 dup_cost= 0.003 actor_loss=-0.0104
+iteration=0884 reward=  -0.046 miss=38.414 dup_cost= 0.001 actor_loss= 0.0218
+iteration=0885 reward=  -0.034 miss=20.727 dup_cost= 0.003 actor_loss=-0.0353
+iteration=0886 reward=  -0.087 miss=49.203 dup_cost= 0.002 actor_loss= 0.0034
+iteration=0887 reward=  -0.076 miss=67.383 dup_cost= 0.005 actor_loss=-0.0025
+iteration=0888 reward=  -0.025 miss=10.547 dup_cost= 0.003 actor_loss= 0.0056
+iteration=0889 reward=  -0.036 miss=20.172 dup_cost= 0.002 actor_loss= 0.0207
+iteration=0890 reward=  -0.084 miss=52.297 dup_cost= 0.000 actor_loss=-0.0051
+iteration=0891 reward=  -0.017 miss= 9.633 dup_cost= 0.001 actor_loss=-0.0078
+iteration=0892 reward=  -0.048 miss=36.789 dup_cost= 0.003 actor_loss= 0.0081
+iteration=0893 reward=  -0.117 miss=81.148 dup_cost= 0.002 actor_loss=-0.0049
+iteration=0894 reward=  -0.046 miss=39.016 dup_cost= 0.006 actor_loss=-0.0017
+iteration=0895 reward=  -0.027 miss=12.703 dup_cost= 0.001 actor_loss= 0.0625
+iteration=0896 reward=  -0.122 miss=101.133 dup_cost= 0.002 actor_loss=-0.0109
+iteration=0897 reward=  -0.035 miss=16.367 dup_cost= 0.003 actor_loss=-0.0093
+iteration=0898 reward=  -0.026 miss= 8.008 dup_cost= 0.003 actor_loss=-0.0145
+iteration=0899 reward=  -0.017 miss=11.203 dup_cost= 0.001 actor_loss= 0.0017
+iteration=0900 reward=  -0.039 miss=21.148 dup_cost= 0.002 actor_loss=-0.0082
+iteration=0901 reward=  -0.032 miss=18.758 dup_cost= 0.003 actor_loss=-0.0092
+iteration=0902 reward=  -0.050 miss=28.711 dup_cost= 0.003 actor_loss=-0.0129
+iteration=0903 reward=  -0.081 miss=39.914 dup_cost= 0.002 actor_loss=-0.0193
+iteration=0904 reward=  -0.035 miss=19.117 dup_cost= 0.005 actor_loss=-0.0091
+iteration=0905 reward=  -0.018 miss= 7.500 dup_cost= 0.003 actor_loss=-0.0148
+iteration=0906 reward=  -0.088 miss=60.594 dup_cost= 0.004 actor_loss=-0.0068
+iteration=0907 reward=  -0.037 miss=18.672 dup_cost= 0.003 actor_loss=-0.0199
+iteration=0908 reward=  -0.017 miss= 5.211 dup_cost= 0.003 actor_loss= 0.0037
+iteration=0909 reward=  -0.069 miss=32.383 dup_cost= 0.002 actor_loss= 0.0033
+iteration=0910 reward=  -0.024 miss=19.227 dup_cost= 0.003 actor_loss= 0.0354
+iteration=0911 reward=  -0.020 miss= 7.562 dup_cost= 0.003 actor_loss= 0.0006
+iteration=0912 reward=  -0.042 miss=18.547 dup_cost= 0.001 actor_loss=-0.0164
+iteration=0913 reward=  -0.073 miss=38.289 dup_cost= 0.004 actor_loss= 0.0124
+iteration=0914 reward=  -0.018 miss=10.727 dup_cost= 0.001 actor_loss= 0.0091
+iteration=0915 reward=  -0.017 miss= 4.945 dup_cost= 0.004 actor_loss=-0.0130
+iteration=0916 reward=  -0.146 miss=97.133 dup_cost= 0.005 actor_loss= 0.0092
+iteration=0917 reward=  -0.013 miss= 9.422 dup_cost= 0.003 actor_loss=-0.0091
+iteration=0918 reward=  -0.031 miss=11.828 dup_cost= 0.005 actor_loss=-0.0156
+iteration=0919 reward=  -0.102 miss=86.273 dup_cost= 0.005 actor_loss=-0.0043
+iteration=0920 reward=  -0.041 miss=30.477 dup_cost= 0.003 actor_loss= 0.0020
+iteration=0921 reward=  -0.021 miss= 6.727 dup_cost= 0.005 actor_loss=-0.0304
+iteration=0922 reward=  -0.057 miss=39.352 dup_cost= 0.003 actor_loss= 0.0025
+iteration=0923 reward=  -0.067 miss=32.273 dup_cost= 0.005 actor_loss= 0.0102
+iteration=0924 reward=  -0.034 miss= 7.773 dup_cost= 0.003 actor_loss= 0.0106
+iteration=0925 reward=  -0.047 miss=35.727 dup_cost= 0.003 actor_loss= 0.0014
+iteration=0926 reward=  -0.095 miss=71.281 dup_cost= 0.004 actor_loss= 0.0090
+iteration=0927 reward=  -0.030 miss=10.664 dup_cost= 0.004 actor_loss= 0.0016
+iteration=0928 reward=  -0.034 miss=10.414 dup_cost= 0.004 actor_loss=-0.0240
+iteration=0929 reward=  -0.093 miss=70.648 dup_cost= 0.002 actor_loss= 0.0454
+iteration=0930 reward=  -0.029 miss=14.516 dup_cost= 0.003 actor_loss= 0.0217
+iteration=0931 reward=  -0.022 miss= 6.531 dup_cost= 0.003 actor_loss=-0.0012
+iteration=0932 reward=  -0.069 miss=45.633 dup_cost= 0.003 actor_loss=-0.0860
+iteration=0933 reward=  -0.052 miss=31.227 dup_cost= 0.001 actor_loss= 0.0054
+iteration=0934 reward=  -0.030 miss=11.664 dup_cost= 0.002 actor_loss= 0.0205
+iteration=0935 reward=  -0.032 miss=15.523 dup_cost= 0.003 actor_loss= 0.0063
+iteration=0936 reward=  -0.117 miss=98.531 dup_cost= 0.004 actor_loss=-0.0288
+iteration=0937 reward=  -0.031 miss=14.094 dup_cost= 0.001 actor_loss= 0.0038
+iteration=0938 reward=  -0.031 miss=17.016 dup_cost= 0.000 actor_loss= 0.0140
+iteration=0939 reward=  -0.073 miss=34.828 dup_cost= 0.002 actor_loss=-0.0107
+iteration=0940 reward=  -0.028 miss=13.430 dup_cost= 0.002 actor_loss= 0.0126
+iteration=0941 reward=  -0.038 miss=16.461 dup_cost= 0.003 actor_loss=-0.0041
+iteration=0942 reward=  -0.087 miss=51.953 dup_cost= 0.002 actor_loss=-0.0402
+iteration=0943 reward=  -0.048 miss=33.070 dup_cost= 0.005 actor_loss=-0.0453
+iteration=0944 reward=  -0.014 miss= 3.898 dup_cost= 0.003 actor_loss= 0.0244
+iteration=0945 reward=  -0.062 miss=41.680 dup_cost= 0.000 actor_loss=-0.0088
+iteration=0946 reward=  -0.094 miss=61.680 dup_cost= 0.000 actor_loss= 0.0050
+iteration=0947 reward=  -0.054 miss=29.070 dup_cost= 0.000 actor_loss=-0.0108
+iteration=0948 reward=  -0.093 miss=89.922 dup_cost= 0.001 actor_loss= 0.0532
+iteration=0949 reward=  -0.088 miss=46.547 dup_cost= 0.000 actor_loss=-0.0088
+iteration=0950 reward=  -0.016 miss= 8.281 dup_cost= 0.001 actor_loss= 0.0187
+iteration=0951 reward=  -0.032 miss=13.609 dup_cost= 0.000 actor_loss=-0.0106
+iteration=0952 reward=  -0.089 miss=60.023 dup_cost= 0.001 actor_loss=-0.0335
+iteration=0953 reward=  -0.040 miss=21.688 dup_cost= 0.000 actor_loss=-0.0085
+iteration=0954 reward=  -0.025 miss=12.562 dup_cost= 0.000 actor_loss= 0.0122
+iteration=0955 reward=  -0.098 miss=66.414 dup_cost= 0.000 actor_loss=-0.0176
+iteration=0956 reward=  -0.025 miss=15.273 dup_cost= 0.001 actor_loss=-0.0030
+iteration=0957 reward=  -0.008 miss= 2.023 dup_cost= 0.002 actor_loss=-0.0562
+iteration=0958 reward=  -0.068 miss=38.336 dup_cost= 0.001 actor_loss=-0.0093
+iteration=0959 reward=  -0.083 miss=52.109 dup_cost= 0.001 actor_loss=-0.0041
+iteration=0960 reward=  -0.026 miss= 9.000 dup_cost= 0.001 actor_loss= 0.0581
+iteration=0961 reward=  -0.018 miss=10.539 dup_cost= 0.000 actor_loss= 0.0225
+iteration=0962 reward=  -0.076 miss=42.773 dup_cost= 0.003 actor_loss= 0.0093
+iteration=0963 reward=  -0.059 miss=31.430 dup_cost= 0.001 actor_loss= 0.0333
+iteration=0964 reward=  -0.029 miss=10.695 dup_cost= 0.002 actor_loss= 0.1195
+iteration=0965 reward=  -0.103 miss=63.258 dup_cost= 0.002 actor_loss=-0.0077
+iteration=0966 reward=  -0.038 miss=30.398 dup_cost= 0.003 actor_loss= 0.0238
+iteration=0967 reward=  -0.040 miss=16.586 dup_cost= 0.003 actor_loss=-0.0703
+iteration=0968 reward=  -0.056 miss=41.812 dup_cost= 0.000 actor_loss= 0.0092
+iteration=0969 reward=  -0.078 miss=46.172 dup_cost= 0.002 actor_loss=-0.0394
+iteration=0970 reward=  -0.016 miss= 6.047 dup_cost= 0.001 actor_loss=-0.0051
+iteration=0971 reward=  -0.093 miss=75.586 dup_cost= 0.006 actor_loss=-0.0050
+iteration=0972 reward=  -0.056 miss=29.758 dup_cost= 0.002 actor_loss= 0.0111
+iteration=0973 reward=  -0.035 miss=13.555 dup_cost= 0.003 actor_loss=-0.0045
+iteration=0974 reward=  -0.058 miss=35.328 dup_cost= 0.002 actor_loss= 0.0156
+iteration=0975 reward=  -0.049 miss=10.516 dup_cost= 0.002 actor_loss=-0.0207
+iteration=0976 reward=  -0.036 miss=24.039 dup_cost= 0.002 actor_loss=-0.0745
+iteration=0977 reward=  -0.035 miss=18.992 dup_cost= 0.006 actor_loss=-0.0101
+iteration=0978 reward=  -0.081 miss=56.289 dup_cost= 0.003 actor_loss=-0.0047
+iteration=0979 reward=  -0.030 miss=25.711 dup_cost= 0.003 actor_loss=-0.0020
+iteration=0980 reward=  -0.031 miss= 7.281 dup_cost= 0.005 actor_loss= 0.0228
+iteration=0981 reward=  -0.059 miss=41.984 dup_cost= 0.004 actor_loss=-0.0104
+iteration=0982 reward=  -0.088 miss=63.047 dup_cost= 0.007 actor_loss= 0.0284
+iteration=0983 reward=  -0.020 miss= 6.906 dup_cost= 0.007 actor_loss= 0.0100
+iteration=0984 reward=  -0.047 miss=32.250 dup_cost= 0.005 actor_loss=-0.0025
+iteration=0985 reward=  -0.073 miss=33.453 dup_cost= 0.003 actor_loss=-0.0073
+iteration=0986 reward=  -0.021 miss=11.461 dup_cost= 0.012 actor_loss= 0.0501
+iteration=0987 reward=  -0.032 miss=13.633 dup_cost= 0.014 actor_loss= 0.0285
+iteration=0988 reward=  -0.077 miss=51.812 dup_cost= 0.011 actor_loss= 0.0189
+iteration=0989 reward=  -0.047 miss=30.047 dup_cost= 0.011 actor_loss=-0.0457
+iteration=0990 reward=  -0.038 miss=13.602 dup_cost= 0.007 actor_loss= 0.0042
+iteration=0991 reward=  -0.098 miss=57.648 dup_cost= 0.009 actor_loss= 0.0514
+iteration=0992 reward=  -0.046 miss=26.547 dup_cost= 0.011 actor_loss=-0.0004
+iteration=0993 reward=  -0.026 miss= 6.102 dup_cost= 0.011 actor_loss=-0.0068
+iteration=0994 reward=  -0.049 miss=27.602 dup_cost= 0.007 actor_loss= 0.0049
+iteration=0995 reward=  -0.089 miss=50.344 dup_cost= 0.010 actor_loss= 0.0077
+iteration=0996 reward=  -0.030 miss=12.812 dup_cost= 0.009 actor_loss= 0.0245
+iteration=0997 reward=  -0.039 miss=17.711 dup_cost= 0.008 actor_loss=-0.0101
+iteration=0998 reward=  -0.112 miss=76.297 dup_cost= 0.008 actor_loss=-0.0014
+iteration=0999 reward=  -0.026 miss=13.781 dup_cost= 0.007 actor_loss=-0.0237
+iteration=1000 reward=  -0.031 miss=19.016 dup_cost= 0.004 actor_loss= 0.0520
+{
+  "delivered_packets": 1784.300238095238,
+  "service_deficit": 0.06718724810395385,
+  "duplication_train_cost": 0.0009882260246323383,
+  "preparation_train_cost": 0.010766468253968767,
+  "active_ue_count": 12.0,
+  "outage_ue_count": 1.5245238095238096,
+  "strict_shortfall_ue_count": 12.0,
+  "service_ratio_mean": 0.9294661331144677,
+  "service_ratio_sum": 11.153593597374718,
+  "outage_service_ratio": 0.8000000000001166,
+  "useful_bits": 21506544.76799162,
+  "duplicated_bits": 22384.14108810546,
+  "mean_utilization": 0.5400030426283193,
+  "max_pressure": 1.1917015772615462,
+  "requested_pressure_mean": 0.5826645911874071,
+  "requested_pressure_max": 1.1917015772615462,
+  "overloaded_satellite_count": 1.0271428571428571,
+  "data_overload_event_rate": 0.17119047619047703,
+  "capacity_violation_count": 0.0,
+  "unschedulable_data_leg_count": 0.003928571428571429,
+  "request_saturation_count": 0.02845238095238095,
+  "mean_duplication_gain": 4.772701813545471e-07,
+  "mean_memory_resource_outcome": 0.08539847883597701,
+  "mean_memory_congestion_outcome": 0.47913216397133473,
+  "handover_success": 0.1798809523809524,
+  "handover_failure": 0.007619047619047619,
+  "pingpong": 0.030833333333333334,
+  "secondary_link_lost": 0.0013095238095238095,
+  "handover_started": 0.18892857142857142,
+  "invalid_actions": 0.0011904761904761906,
+  "preparation_requested": 4.492738095238095,
+  "preparation_rejected": 0.0,
+  "action_stay_fraction": 0.25115079365079296,
+  "action_prepare_fraction": 0.37439484126984063,
+  "action_dup_on_fraction": 0.0011011904761904759,
+  "action_dup_off_fraction": 0.0,
+  "action_commit_fraction": 0.015744047619047522,
+  "action_release_fraction": 0.35650793650793616,
+  "action_rollback_fraction": 0.0011011904761904759,
+  "arrivals": 1918.13,
+  "deadline_misses": 52.02297619047619,
+  "overflow_packets": 75.10702380952381,
+  "throughput_deficit": 0.0705925973333457,
+  "handover_train_cost": 0.015744047605927694,
+  "handover_control_cost": 0.0007872023802963894,
+  "active_handover_started": 0.18892857142857142,
+  "control_cost": 0.003928722055722243,
+  "resource_cost": 0.003928722055722243,
+  "outage_cost": 0.12704365068778078,
+  "outage_ratio": 0.1270436507936382,
+  "dro": 0.0010408060118248272,
+  "mean_valid_action_count": 3.6532936507937044,
+  "team_reward": -0.06816942861788458,
+  "constraint_resource_cost": 0.003928722055722243,
+  "constraint_outage_cost": 0.12704365068778078,
+  "constraint_penalty": 0.0,
+  "constraint_reward": 0.0,
+  "resource_price_mean": 0.0513147320433671,
+  "resource_price_max": 0.224320978502088,
+  "resource_price_std": 0.08399145772967878,
+  "price_nonzero_fraction": 0.29180555555555804,
+  "outage_dual_mu": 0.0,
+  "normalized_outage_dual_mu": 0.0,
+  "outage_target": 0.10000000000001458,
+  "hidden_state_norm": 0.5480611252430589,
+  "reasoning_best_score": 0.12208666264254185,
+  "reasoning_score_gap": 0.012177220637181789,
+  "selected_action_reasoning_rank": 1.8848809523809518,
+  "reasoning_outage_action_spread": 0.0029738531416489368,
+  "reasoning_outage_discriminating_fraction": 0.010486111111111066,
+  "reasoning_mu_outage_spread": 0.0,
+  "reasoning_planning_risk_action_spread": 0.0030384713631016096,
+  "reasoning_planning_risk_discriminating_fraction": 0.45220238095238235,
+  "reasoning_mu_planning_risk_spread": 0.0,
+  "reasoning_prediction_error": 0.06231961279069325,
+  "reasoning_coordination_cost": 0.11669748022118778,
+  "coordination_cost": 0.11669748022118778,
+  "reasoning_selected_predicted_outage": 0.007995846396786315,
+  "reasoning_selected_planning_risk": 0.1263179430829647,
+  "reasoning_selected_control_cost": 0.0007153137397082796,
+  "reasoning_selected_duplication_cost": 0.00031222436913706206,
+  "reasoning_selected_handover_cost": 0.00525608472759738,
+  "reasoning_selected_preparation_cost": 0.0007014256709567925,
+  "strict_shortfall_ratio": 0.9999999999999009,
+  "handover_failure_rate": 0.0403276622555745,
+  "pingpong_rate": 0.1714096624740476,
+  "deadline_violation_rate": 0.027121715520051385,
+  "preparation_rejection_rate": 0.0,
+  "outage_constraint_gap": 0.027043650793638185,
+  "constraint_satisfied": 0.0,
+  "outage_constraint_satisfied": 0.0
+}
