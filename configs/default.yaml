@@ -1,0 +1,93 @@
+seed: 7
+environment:
+  num_ues: 8
+  num_satellites: 6
+  candidate_count: 3
+  episode_steps: 300
+  control_interval_s: 1.0
+  min_elevation_deg: 10.0
+  max_queue_packets: 400
+satellite:
+  altitude_km: 600.0
+  inclination_deg: 53.0
+  orbital_period_s: 5800.0
+  bandwidth_mhz: 20.0
+  tx_power_dbm: 46.0
+  tx_gain_dbi: 30.0
+  capacity_scale: 1.0
+channel:
+  carrier_ghz: 2.0
+  ue_gain_dbi: 0.0
+  noise_figure_db: 7.0
+  implementation_loss_db: 3.0
+  atmospheric_loss_db: 0.5
+  shadow_std_db: 2.0
+  shadow_correlation: 0.95
+  interference_dbm: -108.0
+  spectral_efficiency_cap: 6.0
+traffic:
+  packet_size_bits: 12000
+  mean_arrival_mbps: 1.2
+  arrival_spread: 0.35
+  deadline_ms: 2000.0
+  reliability_target: 0.99
+  qos_priority: 1.0
+qos:
+  outage_service_ratio: 0.80
+scheduler:
+  min_schedulable_spectral_efficiency: 1.0e-4
+  epsilon_capacity: 1.0e-8
+protocol:
+  preparation_steps: 1
+  switching_steps: 2
+  cooldown_steps: 5
+  dwell_steps: 5
+  visibility_margin_steps: 1
+  preparation_resource_fraction: 0.01
+  handover_base_success: 0.995
+  pingpong_window_steps: 20
+reward:
+  lambda_resource: 0.25
+  eta_preparation: 0.20
+  eta_handover: 0.02
+  epsilon: 1.0e-8
+mappo:
+  hidden_dim: 64
+  actor_hidden_dims: [128, 128]
+  critic_hidden_dims: [256, 256]
+  use_memory: false
+  use_reasoning: false
+  use_coordination: false
+  use_constraint: false
+  recurrent_hidden_dim: 128
+  bptt_steps: 16
+  rollout_steps: 128
+  training_iterations: 60
+  update_epochs: 5
+  minibatch_size: 128
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_ratio: 0.2
+  actor_lr: 0.0003
+  critic_lr: 0.001
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.03
+reasoning:
+  horizon_steps: 6
+  discount: 0.95
+  score_epsilon: 1.0e-8
+  score_clip: 5.0
+  duplication_hold_steps: 1
+coordination:
+  price_learning_rate: 0.05
+  price_max: 5.0
+  initial_price: 0.0
+  pressure_clip: 10.0
+  reasoning_price_weight: 1.0
+constraint:
+  outage_target: 0.10
+  dual_learning_rate: 0.02
+  mu_initial: 0.0
+  mu_max: 10.0

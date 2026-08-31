@@ -1,0 +1,3 @@
+mappo:
+  use_memory: true
+  use_reasoning: true

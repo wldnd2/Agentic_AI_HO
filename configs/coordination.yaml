@@ -1,0 +1,5 @@
+mappo:
+  use_memory: true
+  use_reasoning: true
+  use_coordination: true
+  use_constraint: false

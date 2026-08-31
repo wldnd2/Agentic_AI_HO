@@ -1,0 +1,21 @@
+mappo:
+  use_memory: true
+  use_reasoning: true
+  use_coordination: true
+  use_constraint: true
+events:
+  - type: traffic_burst
+    start_step: 60
+    duration_steps: 60
+    severity: 2.5
+    ue_fraction: 0.5
+  - type: capacity_drop
+    start_step: 80
+    duration_steps: 50
+    severity: 0.45
+    satellite_id: 1
+  - type: blockage
+    start_step: 100
+    duration_steps: 25
+    severity: 18.0
+    ue_fraction: 0.25
