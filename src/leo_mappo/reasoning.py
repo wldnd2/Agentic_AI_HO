@@ -115,6 +115,9 @@ class ReasoningResult:
     predicted_duplication_costs: np.ndarray
     predicted_handover_costs: np.ndarray
     predicted_preparation_costs: np.ndarray
+    service_costs: np.ndarray
+    reliability_costs: np.ndarray
+    total_costs: np.ndarray
 
 
 @dataclass
@@ -129,9 +132,9 @@ class _HypotheticalState:
 class LookaheadReasoner:
     """State-free ephemeris lookahead over protocol-aware mobility plans.
 
-    Team-level duplication and handover costs are analytical incremental
-    proxies based only on current observable demand; future event labels are
-    deliberately excluded.
+    V3 ranks plans by service continuity, adding prices in M4 and reliability
+    risk in M5. Legacy V2 additionally ranks analytical control-cost proxies.
+    Future randomized event labels are deliberately excluded.
     """
 
     def __init__(
@@ -195,6 +198,9 @@ class LookaheadReasoner:
         predicted_duplication_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
         predicted_handover_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
         predicted_preparation_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
+        service_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
+        reliability_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
+        total_costs = np.full((env.num_agents, env.action_dim), self.score_clip, dtype=np.float64)
         current_prices = (
             np.zeros(env.num_cells, dtype=np.float64)
             if prices is None
@@ -233,7 +239,9 @@ class LookaheadReasoner:
                 (
                     cost,
                     first_deficit,
+                    service_cost,
                     coordination_cost,
+                    reliability_cost,
                     predicted_outage,
                     planning_reliability_risk,
                     predicted_control_cost,
@@ -242,8 +250,11 @@ class LookaheadReasoner:
                     predicted_preparation_cost,
                 ) = best_evaluation
                 raw_costs[ue.ue_id, action] = float(np.clip(cost, 0.0, self.score_clip))
+                total_costs[ue.ue_id, action] = cost
                 predicted[ue.ue_id, action] = float(np.clip(first_deficit, 0.0, 1.0))
+                service_costs[ue.ue_id, action] = service_cost
                 coordination_costs[ue.ue_id, action] = coordination_cost
+                reliability_costs[ue.ue_id, action] = reliability_cost
                 predicted_outages[ue.ue_id, action] = predicted_outage
                 planning_reliability_risks[ue.ue_id, action] = planning_reliability_risk
                 predicted_control_costs[ue.ue_id, action] = predicted_control_cost
@@ -278,6 +289,9 @@ class LookaheadReasoner:
                 predicted_duplication_costs,
                 predicted_handover_costs,
                 predicted_preparation_costs,
+                service_costs,
+                reliability_costs,
+                total_costs,
             )
         ):
             raise FloatingPointError("reasoner produced a non-finite result")
@@ -294,6 +308,9 @@ class LookaheadReasoner:
             predicted_duplication_costs,
             predicted_handover_costs,
             predicted_preparation_costs,
+            service_costs,
+            reliability_costs,
+            total_costs,
         )
 
     def _pad(self, actions: list[int], stay: int = 0) -> tuple[int, ...]:
@@ -499,7 +516,19 @@ class LookaheadReasoner:
         outage_dual_mu: float,
         aggregate_required_rate: float,
         active_count: float,
-    ) -> tuple[float, float, float, float, float, float, float, float, float]:
+    ) -> tuple[
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+        float,
+    ]:
         ue = env.ues[ue_id]
         state = _HypotheticalState(
             ue.primary_cell,
@@ -509,7 +538,9 @@ class LookaheadReasoner:
             int(ue.last_switch_step),
         )
         total = 0.0
+        total_service = 0.0
         total_coordination = 0.0
+        total_reliability = 0.0
         total_predicted_outage = 0.0
         total_planning_reliability_risk = 0.0
         total_control_cost = 0.0
@@ -548,8 +579,7 @@ class LookaheadReasoner:
                 transmission_rate = stream_rate
                 delivery_probability = probability
                 goodput = transmission_rate * delivery_probability
-                # Incremental team-level proxy: current observable aggregate demand
-                # is held persistent over the horizon without peeking at future events.
+                # Retained as a diagnostic in V3 and as a ranked V2 heuristic.
                 if env.v3_enabled:
                     nominal_other_rate = max(0, env.num_agents - 1) * required_rate
                     network_base_rate = nominal_other_rate + stream_rate
@@ -604,19 +634,34 @@ class LookaheadReasoner:
                 self.reliability_risk_temperature,
                 self.epsilon,
             )
-            base_step_cost = deficit + self.lambda_resource * control_cost
+            service_step_cost = deficit
+            base_step_cost = (
+                service_step_cost
+                if env.v3_enabled
+                else service_step_cost + self.lambda_resource * control_cost
+            )
             # The omitted -mu*outage_target term is identical for every
             # hypothetical plan and therefore cannot change action ranking.
-            step_cost = (
-                base_step_cost + outage_dual_mu * planning_reliability_risk
+            reliability_step_cost = (
+                outage_dual_mu * planning_reliability_risk
                 if self.use_constraint
-                else base_step_cost
+                else 0.0
             )
-            if self.use_coordination:
-                step_cost += self.reasoning_price_weight * coordination_step
+            applied_coordination_cost = (
+                self.reasoning_price_weight * coordination_step
+                if self.use_coordination
+                else 0.0
+            )
+            step_cost = (
+                base_step_cost
+                + applied_coordination_cost
+                + reliability_step_cost
+            )
             discount_weight = self.discount**offset
             total += discount_weight * step_cost
-            total_coordination += discount_weight * coordination_step
+            total_service += discount_weight * service_step_cost
+            total_coordination += discount_weight * applied_coordination_cost
+            total_reliability += discount_weight * reliability_step_cost
             total_predicted_outage += discount_weight * predicted_outage
             total_planning_reliability_risk += (
                 discount_weight * planning_reliability_risk
@@ -630,7 +675,9 @@ class LookaheadReasoner:
         return (
             float(total),
             float(first_deficit),
+            float(total_service),
             float(total_coordination),
+            float(total_reliability),
             float(np.clip(total_predicted_outage / diagnostic_scale, 0.0, 1.0)),
             float(
                 np.clip(

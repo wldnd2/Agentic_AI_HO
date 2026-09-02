@@ -237,6 +237,22 @@ class V3EnvironmentTest(unittest.TestCase):
         changing_geometry = reasoner.analyze(env).raw_costs[ue_id, action]
         self.assertNotEqual(static_geometry, changing_geometry)
 
+    def test_v3_m3_reasoning_total_is_service_only(self) -> None:
+        env, reasoner = make_reasoning_case()
+        result = reasoner.analyze(env)
+        masks = env.action_masks()
+        feasible = masks > 0.0
+        self.assertGreater(float(result.predicted_control_costs[feasible].max()), 0.0)
+        np.testing.assert_allclose(
+            result.total_costs[feasible], result.service_costs[feasible], atol=1e-12
+        )
+        np.testing.assert_array_equal(
+            result.coordination_costs[feasible], np.zeros(np.count_nonzero(feasible))
+        )
+        np.testing.assert_array_equal(
+            result.reliability_costs[feasible], np.zeros(np.count_nonzero(feasible))
+        )
+
     def test_v3_m3_target_scores_ignore_other_ue_dynamic_demand(self) -> None:
         env, reasoner = make_reasoning_case()
         target_ue = 0
@@ -277,6 +293,37 @@ class V3EnvironmentTest(unittest.TestCase):
             without_price.raw_costs[target_ue, action],
             with_price.raw_costs[target_ue, action],
         )
+        self.assertEqual(with_price.reliability_costs[target_ue, action], 0.0)
+        self.assertAlmostEqual(
+            with_price.total_costs[target_ue, action],
+            with_price.service_costs[target_ue, action]
+            + with_price.coordination_costs[target_ue, action],
+        )
+
+    def test_v3_m5_reliability_cost_is_additive(self) -> None:
+        env, _ = make_reasoning_case()
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+            use_constraint=True,
+        )
+        prices = np.full(env.num_cells, 0.5, dtype=np.float64)
+        without_mu = reasoner.analyze(env, prices=prices, outage_dual_mu=0.0)
+        with_mu = reasoner.analyze(env, prices=prices, outage_dual_mu=2.0)
+        feasible = env.action_masks() > 0.0
+        self.assertGreater(float(with_mu.reliability_costs[feasible].max()), 0.0)
+        np.testing.assert_allclose(
+            with_mu.total_costs[feasible],
+            with_mu.service_costs[feasible]
+            + with_mu.coordination_costs[feasible]
+            + with_mu.reliability_costs[feasible],
+            atol=1e-12,
+        )
+        self.assertTrue(
+            np.any(with_mu.total_costs[feasible] != without_mu.total_costs[feasible])
+        )
 
     def test_v2_reasoner_required_rate_interface_preserves_true_behavior(self) -> None:
         env, reasoner = make_reasoning_case(v3=False)
@@ -284,7 +331,18 @@ class V3EnvironmentTest(unittest.TestCase):
         active_reasoner, required_reasoner = env.observed_required_rates()
         np.testing.assert_array_equal(active_true, active_reasoner)
         np.testing.assert_array_equal(required_true, required_reasoner)
-        self.assertTrue(np.isfinite(reasoner.analyze(env).raw_costs).all())
+        result = reasoner.analyze(env)
+        self.assertTrue(np.isfinite(result.raw_costs).all())
+        feasible_with_control = (
+            (env.action_masks() > 0.0) & (result.predicted_control_costs > 0.0)
+        )
+        self.assertTrue(np.any(feasible_with_control))
+        self.assertTrue(
+            np.all(
+                result.total_costs[feasible_with_control]
+                > result.service_costs[feasible_with_control]
+            )
+        )
 
 
 if __name__ == "__main__":

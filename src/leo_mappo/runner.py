@@ -277,6 +277,15 @@ class RolloutRunner:
                 metrics["reasoning_coordination_cost"] += selected_coordination_cost
                 metrics["coordination_cost"] += selected_coordination_cost
                 selected_rows = np.arange(self.env.num_agents)
+                metrics["reasoning_service_cost"] += float(
+                    np.mean(reasoning_result.service_costs[selected_rows, actions])
+                )
+                metrics["reasoning_reliability_cost"] += float(
+                    np.mean(reasoning_result.reliability_costs[selected_rows, actions])
+                )
+                metrics["reasoning_total_cost"] += float(
+                    np.mean(reasoning_result.total_costs[selected_rows, actions])
+                )
                 metrics["reasoning_selected_predicted_outage"] += float(
                     np.mean(reasoning_result.predicted_outages[selected_rows, actions])
                 )
@@ -306,6 +315,9 @@ class RolloutRunner:
                 metrics["selected_action_reasoning_rank"] += 0.0
                 metrics["reasoning_coordination_cost"] += 0.0
                 metrics["coordination_cost"] += 0.0
+                metrics["reasoning_service_cost"] += 0.0
+                metrics["reasoning_reliability_cost"] += 0.0
+                metrics["reasoning_total_cost"] += 0.0
                 metrics["reasoning_selected_predicted_outage"] += 0.0
                 metrics["reasoning_selected_control_cost"] += 0.0
                 metrics["reasoning_selected_duplication_cost"] += 0.0
@@ -528,6 +540,15 @@ def _evaluate_policy_impl(
                 totals["reasoning_coordination_cost"] += selected_coordination_cost
                 totals["coordination_cost"] += selected_coordination_cost
                 selected_rows = np.arange(env.num_agents)
+                totals["reasoning_service_cost"] += float(
+                    np.mean(reasoning_result.service_costs[selected_rows, actions])
+                )
+                totals["reasoning_reliability_cost"] += float(
+                    np.mean(reasoning_result.reliability_costs[selected_rows, actions])
+                )
+                totals["reasoning_total_cost"] += float(
+                    np.mean(reasoning_result.total_costs[selected_rows, actions])
+                )
                 totals["reasoning_selected_predicted_outage"] += float(
                     np.mean(reasoning_result.predicted_outages[selected_rows, actions])
                 )
@@ -557,6 +578,9 @@ def _evaluate_policy_impl(
                 totals["selected_action_reasoning_rank"] += 0.0
                 totals["reasoning_coordination_cost"] += 0.0
                 totals["coordination_cost"] += 0.0
+                totals["reasoning_service_cost"] += 0.0
+                totals["reasoning_reliability_cost"] += 0.0
+                totals["reasoning_total_cost"] += 0.0
                 totals["reasoning_selected_predicted_outage"] += 0.0
                 totals["reasoning_selected_control_cost"] += 0.0
                 totals["reasoning_selected_duplication_cost"] += 0.0
