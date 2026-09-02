@@ -13,6 +13,10 @@ from leo_mappo.runner import RolloutRunner, evaluate_policy
 
 def train(args: argparse.Namespace) -> None:
     config = load_config(args.config, args.override)
+    if args.environment_seed is not None:
+        config["environment_seed"] = args.environment_seed
+    if args.agent_seed is not None:
+        config["agent_seed"] = args.agent_seed
     if args.iterations is not None:
         config["mappo"]["training_iterations"] = args.iterations
     env = LEOMobilityEnv(config)
@@ -21,7 +25,7 @@ def train(args: argparse.Namespace) -> None:
         env.global_state_dim,
         env.action_dim,
         config["mappo"],
-        int(config["seed"]),
+        int(config.get("agent_seed", config["seed"])),
         num_satellites=env.num_cells,
         candidate_count=env.candidate_count,
         eta_handover=float(env.reward_cfg["eta_handover"]),
@@ -48,7 +52,12 @@ def train(args: argparse.Namespace) -> None:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(history)
-    evaluation = evaluate_policy(env, agent, episodes=args.eval_episodes)
+    evaluation = evaluate_policy(
+        env,
+        agent,
+        episodes=args.eval_episodes,
+        evaluation_action_seed=args.evaluation_action_seed,
+    )
     with (output_dir / "evaluation.json").open("w", encoding="utf-8") as handle:
         json.dump(evaluation, handle, indent=2)
     with (output_dir / "evaluation_metrics.csv").open("w", newline="", encoding="utf-8") as handle:
@@ -61,6 +70,7 @@ def train(args: argparse.Namespace) -> None:
             agent,
             episodes=args.stochastic_eval_episodes,
             deterministic=False,
+            evaluation_action_seed=args.evaluation_action_seed,
         )
         with (output_dir / "evaluation_stochastic.json").open("w", encoding="utf-8") as handle:
             json.dump(stochastic_evaluation, handle, indent=2)
@@ -153,19 +163,33 @@ def _save_training_plots(history: list[dict[str, float]], output_dir: Path) -> N
 
 def evaluate(args: argparse.Namespace) -> None:
     config = load_config(args.config, args.override)
+    if args.environment_seed is not None:
+        config["environment_seed"] = args.environment_seed
+    if args.agent_seed is not None:
+        config["agent_seed"] = args.agent_seed
     env = LEOMobilityEnv(config)
     agent = MAPPO(
         env.obs_dim,
         env.global_state_dim,
         env.action_dim,
         config["mappo"],
-        int(config["seed"]),
+        int(config.get("agent_seed", config["seed"])),
         num_satellites=env.num_cells,
         candidate_count=env.candidate_count,
         eta_handover=float(env.reward_cfg["eta_handover"]),
     )
     agent.load(args.weights)
-    print(json.dumps(evaluate_policy(env, agent, episodes=args.eval_episodes), indent=2))
+    print(
+        json.dumps(
+            evaluate_policy(
+                env,
+                agent,
+                episodes=args.eval_episodes,
+                evaluation_action_seed=args.evaluation_action_seed,
+            ),
+            indent=2,
+        )
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -181,6 +205,9 @@ def build_parser() -> argparse.ArgumentParser:
             help="Optional scenario YAML; repeat to deep-merge files in command-line order",
         )
         sub.add_argument("--eval-episodes", type=int, default=3)
+        sub.add_argument("--environment-seed", type=int, default=None)
+        sub.add_argument("--agent-seed", type=int, default=None)
+        sub.add_argument("--evaluation-action-seed", type=int, default=None)
     train_parser = subparsers.choices["train"]
     train_parser.add_argument("--iterations", type=int, default=None)
     train_parser.add_argument("--output", default="outputs/default_run")

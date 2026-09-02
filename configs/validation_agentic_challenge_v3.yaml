@@ -1,0 +1,86 @@
+# V3 changes information and contention structure, not the M1-M5 optimizers.
+environment:
+  challenge_version: v3
+  num_ues: 12
+  num_satellites: 6
+  candidate_count: 3
+  episode_steps: 420
+
+satellite:
+  bandwidth_mhz: 4.0
+  capacity_scale: 0.70
+
+traffic:
+  mean_arrival_mbps: 2.0
+  arrival_spread: 0.35
+
+v3:
+  # Candidate ordering uses delayed/noisy current radio quality only.
+  candidate_policy: observed_current_sinr
+  randomize_events: true
+
+  observation:
+    # Actor telemetry is delayed and has temporally correlated measurement noise.
+    lag_steps: 2
+    sinr_noise_std_db: 1.5
+    load_noise_std: 0.08
+    noise_correlation: 0.80
+
+  latent_degradation:
+    # Per-UE/per-satellite hidden regimes persist and recover gradually.
+    initial_degraded_probability: 0.06
+    entry_probability_per_step: 0.006
+    degraded_duration_steps: [8, 24]
+    recovering_duration_steps: [4, 10]
+    loss_db_range: [7.0, 15.0]
+
+  preparation_admission:
+    # Separate control-plane slots; data-plane reservation remains fractional.
+    max_concurrent_per_satellite: 2
+
+  duplication:
+    # Path failures retain mild common-mode correlation but can diversify.
+    failure_correlation: 0.15
+
+  coordination_demand:
+    # M4 prices integrate system-wide intended data/control demand with one-step lag.
+    serving_weight: 1.0
+    preparation_weight: 1.0
+    duplication_weight: 1.0
+
+# Ranges are sampled once per episode from the environment RNG. Realizations are
+# hidden from actor observations and from the analytical geometry reasoner.
+events:
+  - type: blockage
+    start_step_range: [35, 85]
+    duration_steps_range: [25, 55]
+    severity_range: [8.0, 15.0]
+    satellite_choices: [0, 1, 2, 3, 4, 5]
+    ue_fraction_range: [0.30, 0.65]
+
+  - type: capacity_drop
+    start_step_range: [105, 165]
+    duration_steps_range: [35, 70]
+    severity_range: [0.45, 0.75]
+    satellite_choices: [0, 1, 2, 3, 4, 5]
+    ue_fraction_range: [0.30, 0.70]
+
+  - type: traffic_burst
+    start_step_range: [180, 245]
+    duration_steps_range: [35, 70]
+    severity_range: [1.35, 1.85]
+    ue_fraction_range: [0.30, 0.70]
+
+  - type: blockage
+    start_step_range: [255, 320]
+    duration_steps_range: [25, 55]
+    severity_range: [8.0, 15.0]
+    satellite_choices: [0, 1, 2, 3, 4, 5]
+    ue_fraction_range: [0.30, 0.65]
+
+  - type: capacity_drop
+    start_step_range: [325, 370]
+    duration_steps_range: [25, 50]
+    severity_range: [0.50, 0.80]
+    satellite_choices: [0, 1, 2, 3, 4, 5]
+    ue_fraction_range: [0.30, 0.70]

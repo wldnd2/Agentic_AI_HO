@@ -427,7 +427,10 @@ class LookaheadReasoner:
             return 0.0, 0.0
         current = env.links[ue_id][cell_id]
         loss_delta = 20.0 * np.log10(future_distance / (current.distance_m + self.epsilon))
-        sinr_db = current.sinr_db - loss_delta
+        current_sinr = (
+            env.observed_sinr[ue_id, cell_id] if env.v3_enabled else current.sinr_db
+        )
+        sinr_db = current_sinr - loss_delta
         sinr_linear = 10.0 ** (np.clip(sinr_db, -120.0, 80.0) / 10.0)
         efficiency = min(
             float(env.channel_cfg["spectral_efficiency_cap"]),
@@ -449,7 +452,14 @@ class LookaheadReasoner:
             return 0.0, 0.0, 0.0
         efficiency, success = self._future_link(env, ue_id, cell_id, offset)
         fraction = available[cell_id]
-        pressure = max(0.0, env.last_pressure[cell_id])
+        pressure = max(
+            0.0,
+            (
+                env.observed_load[ue_id, cell_id]
+                if env.v3_enabled
+                else env.last_pressure[cell_id]
+            ),
+        )
         load_scale = min(1.0, fraction / max(fraction, pressure, self.epsilon))
         raw_capacity = (
             env.satellites[cell_id].bandwidth_hz

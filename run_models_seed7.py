@@ -151,6 +151,7 @@ def run_model(
     iterations: int,
     output_root: Path,
     seed_config: Path,
+    evaluation_action_seed: int | None,
 ):
     output_dir = output_root / model.lower()
     checkpoint = output_dir / "mappo_weights.npz"
@@ -220,6 +221,8 @@ def run_model(
         "--output",
         str(output_dir),
     ]
+    if evaluation_action_seed is not None:
+        cmd += ["--evaluation-action-seed", str(evaluation_action_seed)]
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC)
@@ -347,6 +350,13 @@ def main():
         required=True,
     )
 
+    parser.add_argument(
+        "--evaluation-action-seed",
+        type=int,
+        default=None,
+        help="Optional shared stochastic-evaluation action seed across models",
+    )
+
     args = parser.parse_args()
 
     output_root = (
@@ -380,6 +390,7 @@ def main():
             args.iterations,
             output_root,
             seed_config,
+            args.evaluation_action_seed,
         )
 
 

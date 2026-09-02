@@ -382,7 +382,7 @@ def evaluate_200(
         env.global_state_dim,
         env.action_dim,
         cfg["mappo"],
-        int(cfg["seed"]),
+        int(cfg.get("agent_seed", cfg["seed"])),
         num_satellites=env.num_cells,
         candidate_count=env.candidate_count,
         eta_handover=float(

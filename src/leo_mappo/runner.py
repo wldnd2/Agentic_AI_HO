@@ -40,6 +40,20 @@ def summarize_metrics(totals: dict[str, float], steps: int, epsilon: float = 1e-
     result["preparation_rejection_rate"] = totals.get("preparation_rejected", 0.0) / (
         totals.get("preparation_requested", 0.0) + epsilon
     )
+    result["prepare_rate"] = result.get("action_prepare_fraction", 0.0)
+    result["release_rate"] = result.get("action_release_fraction", 0.0)
+    result["commit_rate"] = result.get("action_commit_fraction", 0.0)
+    result["rollback_rate"] = result.get("action_rollback_fraction", 0.0)
+    result["duplication_activation_rate"] = result.get("action_dup_on_fraction", 0.0)
+    result["prepare_to_release_without_commit_rate"] = totals.get(
+        "prepare_to_release_without_commit", 0.0
+    ) / (totals.get("preparation_admitted", 0.0) + epsilon)
+    result["prepare_to_commit_rate"] = totals.get("prepare_to_commit", 0.0) / (
+        totals.get("preparation_admitted", 0.0) + epsilon
+    )
+    result["mean_prepared_duration"] = totals.get("prepared_duration_sum", 0.0) / (
+        totals.get("prepared_duration_count", 0.0) + epsilon
+    )
     return result
 
 
@@ -349,7 +363,7 @@ class RolloutRunner:
         return batch, summary
 
 
-def evaluate_policy(
+def _evaluate_policy_impl(
     env: LEOMobilityEnv,
     agent: MAPPO,
     episodes: int = 5,
@@ -573,3 +587,25 @@ def evaluate_policy(
     result["constraint_satisfied"] = float(gap <= 0.0)
     result["outage_constraint_satisfied"] = result["constraint_satisfied"]
     return result
+
+
+def evaluate_policy(
+    env: LEOMobilityEnv,
+    agent: MAPPO,
+    episodes: int = 5,
+    deterministic: bool = True,
+    evaluation_action_seed: int | None = None,
+) -> dict[str, float]:
+    """Evaluate with an optional action RNG independent of initialization/training.
+
+    None deliberately preserves legacy RNG consumption. A supplied seed installs
+    a temporary generator and restores the exact original generator afterward.
+    """
+    if evaluation_action_seed is None:
+        return _evaluate_policy_impl(env, agent, episodes, deterministic)
+    original_rng = agent.rng
+    agent.rng = np.random.default_rng(int(evaluation_action_seed))
+    try:
+        return _evaluate_policy_impl(env, agent, episodes, deterministic)
+    finally:
+        agent.rng = original_rng

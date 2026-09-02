@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import deque
 from enum import IntEnum
 from typing import Any
 
@@ -42,6 +43,14 @@ class LEOMobilityEnv:
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self.env_cfg = config["environment"]
+        self.challenge_version = str(self.env_cfg.get("challenge_version", "v2")).lower()
+        self.v3_enabled = self.challenge_version == "v3"
+        self.v3_cfg = config.get("v3", {}) if self.v3_enabled else {}
+        self.telemetry_cfg = self.v3_cfg.get("observation", {})
+        self.latent_cfg = self.v3_cfg.get("latent_degradation", {})
+        self.preparation_admission_cfg = self.v3_cfg.get("preparation_admission", {})
+        self.duplication_cfg = self.v3_cfg.get("duplication", {})
+        self.coordination_demand_cfg = self.v3_cfg.get("coordination_demand", {})
         self.sat_cfg = config["satellite"]
         self.channel_cfg = config["channel"]
         self.traffic_cfg = config["traffic"]
@@ -65,7 +74,8 @@ class LEOMobilityEnv:
         self.action_dim = self.candidate_count + 6
         self.obs_dim = 16 + 7 * self.candidate_count
         self.global_state_dim = self.num_agents * self.obs_dim + 2 * self.num_cells
-        self.rng = np.random.default_rng(int(config.get("seed", 0)))
+        self.environment_seed = int(config.get("environment_seed", config.get("seed", 0)))
+        self.rng = np.random.default_rng(self.environment_seed)
         self.interval_s = float(self.env_cfg["control_interval_s"])
         self.min_elevation_rad = np.radians(float(self.env_cfg["min_elevation_deg"]))
         self.satellites = self._make_satellites()
@@ -95,13 +105,22 @@ class LEOMobilityEnv:
             raise ValueError("scheduler thresholds must be non-negative with positive epsilon_capacity")
         self.scheduler = QoSAwareFairScheduler(request_epsilon=self.epsilon_capacity)
         self.events = EventGenerator(
-            config.get("events", []), self.num_agents, self.num_cells, self.rng
+            config.get("events", []),
+            self.num_agents,
+            self.num_cells,
+            self.rng,
+            randomized=self.v3_enabled and bool(self.v3_cfg.get("randomize_events", True)),
         )
         self.step_index = 0
         self.time_s = 0.0
         self.last_utilization = np.zeros(self.num_cells, dtype=np.float64)
         self.last_pressure = np.zeros(self.num_cells, dtype=np.float64)
         self.last_requested_pressure = np.zeros(self.num_cells, dtype=np.float64)
+        self.last_serving_demand = np.zeros(self.num_cells, dtype=np.float64)
+        self.last_preparation_demand = np.zeros(self.num_cells, dtype=np.float64)
+        self.last_preparation_intent_count = np.zeros(self.num_cells, dtype=np.float64)
+        self.last_duplication_demand = np.zeros(self.num_cells, dtype=np.float64)
+        self.last_coordination_demand = np.zeros(self.num_cells, dtype=np.float64)
         self.links: list[list[LinkResult]] = []
         self.remaining_visibility = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
         self.candidates: list[list[int]] = []
@@ -110,6 +129,21 @@ class LEOMobilityEnv:
         self._last_handover_started = np.zeros(self.num_agents, dtype=np.float64)
         self._last_agent_outcomes = np.zeros((self.num_agents, 6), dtype=np.float64)
         self._last_agent_active = np.zeros(self.num_agents, dtype=np.float64)
+        self.observed_sinr = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self.observed_efficiency = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self.observed_elevation = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self.observed_sinr_trend = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self.observed_load = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self._telemetry_history: deque[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = deque()
+        self._sinr_noise_state = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self._load_noise_state = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self.latent_degradation_state = np.zeros((self.num_agents, self.num_cells), dtype=np.int8)
+        self.latent_degradation_timer = np.zeros((self.num_agents, self.num_cells), dtype=np.int64)
+        self.latent_degradation_loss_db = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
+        self._prepared_since = np.full(self.num_agents, -1, dtype=np.int64)
+        self.preparation_requests_by_ue = np.zeros(self.num_agents, dtype=np.int64)
+        self.preparation_admissions_by_ue = np.zeros(self.num_agents, dtype=np.int64)
+        self.preparation_rejections_by_ue = np.zeros(self.num_agents, dtype=np.int64)
 
     @property
     def prepare_start(self) -> int:
@@ -189,6 +223,11 @@ class LEOMobilityEnv:
         self.last_utilization.fill(0.0)
         self.last_pressure.fill(0.0)
         self.last_requested_pressure.fill(0.0)
+        self.last_serving_demand.fill(0.0)
+        self.last_preparation_demand.fill(0.0)
+        self.last_preparation_intent_count.fill(0.0)
+        self.last_duplication_demand.fill(0.0)
+        self.last_coordination_demand.fill(0.0)
         self.channel.reset()
         self.events.reset()
         self._active_effects = self.events.effects(0)
@@ -196,10 +235,19 @@ class LEOMobilityEnv:
         self._last_handover_started.fill(0.0)
         self._last_agent_outcomes.fill(0.0)
         self._last_agent_active.fill(0.0)
+        self._prepared_since.fill(-1)
+        self.preparation_requests_by_ue.fill(0)
+        self.preparation_admissions_by_ue.fill(0)
+        self.preparation_rejections_by_ue.fill(0)
+        self._reset_v3_runtime()
         for satellite in self.satellites:
             satellite.capacity_multiplier = 1.0
         for ue in self.ues:
             ue.reset_runtime()
+            if self.v3_enabled:
+                # V3 seeded episode resets must not inherit a serving cell from
+                # the preceding episode; V2 keeps its historical reset path.
+                ue.primary_cell = None
         self._refresh_links()
         for ue in self.ues:
             visible = [cell for cell in range(self.num_cells) if self.links[ue.ue_id][cell].visible]
@@ -207,7 +255,103 @@ class LEOMobilityEnv:
                 ue.primary_cell = int(np.argmax([link.elevation_deg for link in self.links[ue.ue_id]]))
             else:
                 ue.primary_cell = max(visible, key=lambda cell: self.links[ue.ue_id][cell].sinr_db)
+        if self.v3_enabled:
+            self.candidates = [self._select_candidates(ue) for ue in self.ues]
         return self._build_output_state()
+
+    def _reset_v3_runtime(self) -> None:
+        self._telemetry_history.clear()
+        self._sinr_noise_state.fill(0.0)
+        self._load_noise_state.fill(0.0)
+        self.observed_sinr.fill(0.0)
+        self.observed_efficiency.fill(0.0)
+        self.observed_elevation.fill(0.0)
+        self.observed_sinr_trend.fill(0.0)
+        self.observed_load.fill(0.0)
+        self.latent_degradation_state.fill(0)
+        self.latent_degradation_timer.fill(0)
+        self.latent_degradation_loss_db.fill(0.0)
+        if not self.v3_enabled:
+            return
+        initial_probability = float(self.latent_cfg.get("initial_degraded_probability", 0.05))
+        initially_degraded = self.rng.random(self.latent_degradation_state.shape) < initial_probability
+        self._enter_degraded(initially_degraded)
+
+    def _sample_duration(self, name: str, default: tuple[int, int]) -> np.ndarray:
+        low, high = self.latent_cfg.get(name, list(default))
+        return self.rng.integers(int(low), int(high) + 1, size=(self.num_agents, self.num_cells))
+
+    def _enter_degraded(self, mask: np.ndarray) -> None:
+        if not np.any(mask):
+            return
+        low, high = self.latent_cfg.get("loss_db_range", [7.0, 15.0])
+        losses = self.rng.uniform(float(low), float(high), size=mask.shape)
+        durations = self._sample_duration("degraded_duration_steps", (8, 24))
+        self.latent_degradation_state[mask] = 1
+        self.latent_degradation_timer[mask] = durations[mask]
+        self.latent_degradation_loss_db[mask] = losses[mask]
+
+    def _advance_latent_regimes(self) -> None:
+        if not self.v3_enabled:
+            return
+        active = self.latent_degradation_state > 0
+        self.latent_degradation_timer[active] -= 1
+        degraded_done = (self.latent_degradation_state == 1) & (self.latent_degradation_timer <= 0)
+        if np.any(degraded_done):
+            durations = self._sample_duration("recovering_duration_steps", (4, 10))
+            self.latent_degradation_state[degraded_done] = 2
+            self.latent_degradation_timer[degraded_done] = durations[degraded_done]
+        recovering = self.latent_degradation_state == 2
+        if np.any(recovering):
+            recovery_steps = np.maximum(self.latent_degradation_timer[recovering], 1)
+            self.latent_degradation_loss_db[recovering] *= (
+                (recovery_steps - 1) / recovery_steps
+            )
+        recovered = recovering & (self.latent_degradation_timer <= 0)
+        self.latent_degradation_state[recovered] = 0
+        self.latent_degradation_loss_db[recovered] = 0.0
+        starts = (self.latent_degradation_state == 0) & (
+            self.rng.random(self.latent_degradation_state.shape)
+            < float(self.latent_cfg.get("entry_probability_per_step", 0.006))
+        )
+        self._enter_degraded(starts)
+
+    def _update_observed_telemetry(self) -> None:
+        true_sinr = np.asarray([[link.sinr_db for link in row] for row in self.links])
+        true_efficiency = np.asarray([[link.spectral_efficiency for link in row] for row in self.links])
+        true_elevation = np.asarray([[link.elevation_deg for link in row] for row in self.links])
+        true_load = np.broadcast_to(self.last_requested_pressure, true_sinr.shape).copy()
+        self._telemetry_history.append((true_sinr, true_efficiency, true_elevation, true_load))
+        lag = max(0, int(self.telemetry_cfg.get("lag_steps", 1)))
+        while len(self._telemetry_history) > lag + 1:
+            delayed = self._telemetry_history.popleft()
+        if len(self._telemetry_history) <= lag:
+            delayed = self._telemetry_history[0]
+        else:
+            delayed = self._telemetry_history[-(lag + 1)]
+        sinr, efficiency, elevation, load = (value.copy() for value in delayed)
+        correlation = float(self.telemetry_cfg.get("noise_correlation", 0.80))
+        innovation = np.sqrt(max(0.0, 1.0 - correlation**2))
+        self._sinr_noise_state = correlation * self._sinr_noise_state + self.rng.normal(
+            0.0,
+            float(self.telemetry_cfg.get("sinr_noise_std_db", 1.5)) * innovation,
+            self._sinr_noise_state.shape,
+        )
+        self._load_noise_state = correlation * self._load_noise_state + self.rng.normal(
+            0.0,
+            float(self.telemetry_cfg.get("load_noise_std", 0.08)) * innovation,
+            self._load_noise_state.shape,
+        )
+        previous = self.observed_sinr.copy()
+        self.observed_sinr = sinr + self._sinr_noise_state
+        self.observed_efficiency = np.clip(
+            efficiency * np.power(2.0, self._sinr_noise_state / 10.0),
+            0.0,
+            float(self.channel_cfg["spectral_efficiency_cap"]),
+        )
+        self.observed_elevation = elevation
+        self.observed_load = np.maximum(0.0, load + self._load_noise_state)
+        self.observed_sinr_trend = self.observed_sinr - previous
 
     def _refresh_links(self) -> None:
         effects = self._active_effects
@@ -222,7 +366,14 @@ class LEOMobilityEnv:
                         satellite,
                         self.time_s,
                         self.min_elevation_rad,
-                        extra_loss_db=float(effects.link_extra_loss_db[ue.ue_id, cell_id]),
+                        extra_loss_db=float(
+                            effects.link_extra_loss_db[ue.ue_id, cell_id]
+                            + (
+                                self.latent_degradation_loss_db[ue.ue_id, cell_id]
+                                if self.v3_enabled
+                                else 0.0
+                            )
+                        ),
                     )
                 )
             self.links.append(ue_links)
@@ -235,13 +386,25 @@ class LEOMobilityEnv:
                     self.min_elevation_rad,
                     resolution_s=10.0,
                 )
+        if self.v3_enabled:
+            self._update_observed_telemetry()
         self.candidates = []
         for ue in self.ues:
-            choices = [
-                cell_id
-                for cell_id in range(self.num_cells)
-                if cell_id != ue.primary_cell and self.links[ue.ue_id][cell_id].visible
-            ]
+            self.candidates.append(self._select_candidates(ue))
+
+    def _select_candidates(self, ue: UE) -> list[int]:
+        choices = [
+            cell_id
+            for cell_id in range(self.num_cells)
+            if cell_id != ue.primary_cell and self.links[ue.ue_id][cell_id].visible
+        ]
+        if self.v3_enabled:
+            # V3 candidate discovery is radio-only. Future visibility, true load,
+            # latent state, and coordinator prices remain decision-layer inputs.
+            choices.sort(
+                key=lambda cell_id: self.observed_sinr[ue.ue_id, cell_id], reverse=True
+            )
+        else:
             choices.sort(
                 key=lambda cell_id: (
                     self.links[ue.ue_id][cell_id].sinr_db
@@ -250,7 +413,7 @@ class LEOMobilityEnv:
                 ),
                 reverse=True,
             )
-            self.candidates.append(choices[: self.candidate_count])
+        return choices[: self.candidate_count]
 
     def action_masks(self) -> np.ndarray:
         masks = np.zeros((self.num_agents, self.action_dim), dtype=np.float64)
@@ -259,7 +422,9 @@ class LEOMobilityEnv:
             mask[Action.STAY] = 1.0
             if ue.state == MobilityState.SINGLE:
                 for slot, cell_id in enumerate(self.candidates[ue.ue_id]):
-                    enough_visibility = self.remaining_visibility[ue.ue_id, cell_id] >= (
+                    enough_visibility = self.v3_enabled or self.remaining_visibility[
+                        ue.ue_id, cell_id
+                    ] >= (
                         self.protocol_cfg["preparation_steps"]
                         + self.protocol_cfg["switching_steps"]
                         + int(self.protocol_cfg.get("visibility_margin_steps", 0))
@@ -288,7 +453,9 @@ class LEOMobilityEnv:
         secondary = ue.secondary_cell
         if secondary is None or not self.links[ue.ue_id][secondary].visible:
             return False
-        enough_visibility = self.remaining_visibility[ue.ue_id, secondary] >= (
+        # V3 keeps physical/protocol invariants in the hard mask but leaves
+        # future lifetime quality to the actor and analytical reasoner.
+        enough_visibility = self.v3_enabled or self.remaining_visibility[ue.ue_id, secondary] >= (
             int(self.protocol_cfg["switching_steps"])
             + int(self.protocol_cfg.get("visibility_margin_steps", 0))
         ) * self.interval_s
@@ -311,6 +478,7 @@ class LEOMobilityEnv:
                     ue.state = MobilityState.SINGLE
                     ue.protocol_timer = 0
                     counters["secondary_link_lost"] += 1
+                    self._prepared_since[ue.ue_id] = -1
                     continue
             if ue.protocol_timer > 0:
                 ue.protocol_timer -= 1
@@ -356,8 +524,17 @@ class LEOMobilityEnv:
             "invalid_actions": 0,
             "preparation_requested": 0,
             "preparation_rejected": 0,
+            "preparation_admitted": 0,
+            "release_count": 0,
+            "rollback_count": 0,
+            "prepare_to_release_without_commit": 0,
+            "prepare_to_commit": 0,
+            "prepared_duration_sum": 0,
+            "prepared_duration_count": 0,
+            "duplication_activation_count": 0,
         }
         valid_actions = np.full(self.num_agents, int(Action.STAY), dtype=np.int64)
+        self.last_preparation_intent_count.fill(0.0)
         self._last_handover_started.fill(0.0)
         for ue, raw_action in zip(self.ues, actions):
             action = int(raw_action)
@@ -365,15 +542,115 @@ class LEOMobilityEnv:
                 counters["invalid_actions"] += 1
                 action = int(Action.STAY)
             valid_actions[ue.ue_id] = action
-        # Release capacity first, then admit simultaneous preparations in UE-id order.
+        # Releases are resolved before preparation occupancy is measured.
         for ue in self.ues:
             action = int(valid_actions[ue.ue_id])
             if action in (self.release_action, self.rollback_action):
+                if action == self.release_action:
+                    counters["release_count"] += 1
+                    if self._prepared_since[ue.ue_id] >= 0:
+                        counters["prepare_to_release_without_commit"] += 1
+                else:
+                    counters["rollback_count"] += 1
+                if self._prepared_since[ue.ue_id] >= 0:
+                    counters["prepared_duration_sum"] += (
+                        self.step_index - int(self._prepared_since[ue.ue_id])
+                    )
+                    counters["prepared_duration_count"] += 1
+                self._prepared_since[ue.ue_id] = -1
                 ue.secondary_cell = None
                 ue.state = MobilityState.SINGLE
                 ue.protocol_timer = 0
         reservation = self._compute_preparation_reservations()
+        preparation_counts = np.zeros(self.num_cells, dtype=np.int64)
+        for existing in self.ues:
+            if existing.secondary_cell is not None and existing.state in (
+                MobilityState.PREPARED,
+                MobilityState.DUPLICATING,
+                MobilityState.SWITCHING,
+            ):
+                preparation_counts[existing.secondary_cell] += 1
+        control_capacity = int(
+            self.preparation_admission_cfg.get("max_concurrent_per_satellite", self.num_agents)
+        )
         rho = float(self.protocol_cfg["preparation_resource_fraction"])
+
+        def apply_non_prepare_action(ue: UE, action: int) -> None:
+            if action == self.dup_on_action:
+                ue.state = MobilityState.DUPLICATING
+                counters["duplication_activation_count"] += 1
+            elif action == self.dup_off_action:
+                ue.state = MobilityState.PREPARED
+            elif action == self.commit_action:
+                if self._prepared_since[ue.ue_id] >= 0:
+                    counters["prepare_to_commit"] += 1
+                    counters["prepared_duration_sum"] += (
+                        self.step_index - int(self._prepared_since[ue.ue_id])
+                    )
+                    counters["prepared_duration_count"] += 1
+                self._prepared_since[ue.ue_id] = -1
+                ue.state = MobilityState.SWITCHING
+                ue.protocol_timer = int(self.protocol_cfg["switching_steps"])
+                counters["handover_started"] += 1
+                self._last_handover_started[ue.ue_id] = 1.0
+
+        if self.v3_enabled:
+            # Atomic V3 semantics: collect every new request before selecting
+            # winners. Existing reservations occupy slots, while competing new
+            # requests are sampled uniformly without replacement.
+            requests_by_target: list[list[UE]] = [[] for _ in range(self.num_cells)]
+            for ue in self.ues:
+                action = int(valid_actions[ue.ue_id])
+                if self.prepare_start <= action < self.prepare_start + self.candidate_count:
+                    counters["preparation_requested"] += 1
+                    slot = action - self.prepare_start
+                    if slot < len(self.candidates[ue.ue_id]):
+                        target = self.candidates[ue.ue_id][slot]
+                        requests_by_target[target].append(ue)
+                        self.last_preparation_intent_count[target] += 1.0
+                        self.preparation_requests_by_ue[ue.ue_id] += 1
+                else:
+                    apply_non_prepare_action(ue, action)
+
+            for target, requesters in enumerate(requests_by_target):
+                if not requesters:
+                    continue
+                control_slots = max(0, control_capacity - int(preparation_counts[target]))
+                physical_slots = (
+                    self.num_agents
+                    if rho <= 0.0
+                    else max(0, int(np.floor((1.0 + 1e-12 - reservation[target]) / rho)))
+                )
+                available_slots = min(control_slots, physical_slots)
+                if len(requesters) <= available_slots:
+                    admitted_ids = {ue.ue_id for ue in requesters}
+                elif available_slots > 0:
+                    requester_ids = np.asarray([ue.ue_id for ue in requesters], dtype=np.int64)
+                    admitted_ids = set(
+                        int(value)
+                        for value in self.rng.choice(
+                            requester_ids, size=available_slots, replace=False
+                        )
+                    )
+                else:
+                    admitted_ids = set()
+                for ue in requesters:
+                    if ue.ue_id in admitted_ids:
+                        ue.secondary_cell = target
+                        ue.state = MobilityState.PREPARED
+                        ue.protocol_timer = int(self.protocol_cfg["preparation_steps"])
+                        counters["preparation_admitted"] += 1
+                        self.preparation_admissions_by_ue[ue.ue_id] += 1
+                        self._prepared_since[ue.ue_id] = self.step_index
+                    else:
+                        ue.secondary_cell = None
+                        ue.state = MobilityState.SINGLE
+                        ue.protocol_timer = 0
+                        counters["preparation_rejected"] += 1
+                        self.preparation_rejections_by_ue[ue.ue_id] += 1
+            return counters
+
+        # V2 preserves the historical sequential admission behavior exactly.
         for ue in self.ues:
             action = int(valid_actions[ue.ue_id])
             if self.prepare_start <= action < self.prepare_start + self.candidate_count:
@@ -381,25 +658,22 @@ class LEOMobilityEnv:
                 slot = action - self.prepare_start
                 if slot < len(self.candidates[ue.ue_id]):
                     target = self.candidates[ue.ue_id][slot]
+                    self.last_preparation_intent_count[target] += 1.0
                     if reservation[target] + rho <= 1.0 + 1e-12:
                         ue.secondary_cell = target
                         ue.state = MobilityState.PREPARED
                         ue.protocol_timer = int(self.protocol_cfg["preparation_steps"])
                         reservation[target] += rho
+                        preparation_counts[target] += 1
+                        counters["preparation_admitted"] += 1
+                        self._prepared_since[ue.ue_id] = self.step_index
                     else:
                         ue.secondary_cell = None
                         ue.state = MobilityState.SINGLE
                         ue.protocol_timer = 0
                         counters["preparation_rejected"] += 1
-            elif action == self.dup_on_action:
-                ue.state = MobilityState.DUPLICATING
-            elif action == self.dup_off_action:
-                ue.state = MobilityState.PREPARED
-            elif action == self.commit_action:
-                ue.state = MobilityState.SWITCHING
-                ue.protocol_timer = int(self.protocol_cfg["switching_steps"])
-                counters["handover_started"] += 1
-                self._last_handover_started[ue.ue_id] = 1.0
+            else:
+                apply_non_prepare_action(ue, action)
         return counters
 
     def _compute_preparation_reservations(self) -> np.ndarray:
@@ -463,6 +737,19 @@ class LEOMobilityEnv:
         if np.any(preparation > 1.0 + 1e-9):
             raise RuntimeError("preparation admission violated the shared-capacity constraint")
         schedule = self.scheduler.allocate(requests, bandwidth, capacity_scale, 1.0 - preparation)
+        serving_demand = np.zeros(self.num_cells, dtype=np.float64)
+        duplication_demand = np.zeros(self.num_cells, dtype=np.float64)
+        for request in requests:
+            unit_capacity = (
+                bandwidth[request.cell_id]
+                * max(0.0, request.spectral_efficiency)
+                * max(0.0, capacity_scale[request.cell_id])
+            )
+            fraction = min(1.0, max(0.0, request.demand_bps / (unit_capacity + self.epsilon_capacity)))
+            if request.is_secondary:
+                duplication_demand[request.cell_id] += fraction
+            else:
+                serving_demand[request.cell_id] += fraction
         expected_goodput = np.zeros(self.num_agents, dtype=np.float64)
         delivered_by_ue = np.zeros(self.num_agents, dtype=np.float64)
         duplicated_bits = 0.0
@@ -483,7 +770,9 @@ class LEOMobilityEnv:
                 probability = joint_delivery_probability(
                     primary_success,
                     self.links[ue.ue_id][secondary].packet_success_probability,
-                    failure_correlation=0.15,
+                    failure_correlation=float(
+                        self.duplication_cfg.get("failure_correlation", 0.15)
+                    ),
                 )
             else:
                 rate = primary_rate
@@ -502,6 +791,31 @@ class LEOMobilityEnv:
         self.last_utilization = total_fraction
         self.last_requested_pressure = preparation + schedule.pressure
         self.last_pressure = self.last_requested_pressure.copy()
+        self.last_serving_demand = serving_demand
+        if self.v3_enabled:
+            preparation_capacity = max(
+                1.0,
+                float(
+                    self.preparation_admission_cfg.get(
+                        "max_concurrent_per_satellite", self.num_agents
+                    )
+                ),
+            )
+            self.last_preparation_demand = (
+                self.last_preparation_intent_count / preparation_capacity
+            )
+        else:
+            self.last_preparation_demand = preparation.copy()
+        self.last_duplication_demand = duplication_demand
+        if self.v3_enabled:
+            self.last_coordination_demand = (
+                float(self.coordination_demand_cfg.get("serving_weight", 1.0)) * serving_demand
+                + float(self.coordination_demand_cfg.get("preparation_weight", 1.0))
+                * self.last_preparation_demand
+                + float(self.coordination_demand_cfg.get("duplication_weight", 1.0)) * duplication_demand
+            )
+        else:
+            self.last_coordination_demand = self.last_requested_pressure.copy()
         epsilon = float(self.reward_cfg.get("epsilon", 1e-8))
         deficits = np.where(
             active > 0.0,
@@ -606,6 +920,25 @@ class LEOMobilityEnv:
             "unschedulable_data_leg_count": float(unschedulable_data_leg_count),
             "request_saturation_count": float(schedule.request_saturation_count),
             "mean_duplication_gain": float(duplication_gain.mean()),
+            "useful_duplication_interval_count": float(np.count_nonzero(duplication_gain > 1e-8)),
+            "duplication_active_ue_count": float(
+                sum(ue.state == MobilityState.DUPLICATING for ue in self.ues)
+            ),
+            "duplication_active_time_fraction": float(
+                np.mean([ue.state == MobilityState.DUPLICATING for ue in self.ues])
+            ),
+            "serving_demand_mean": float(serving_demand.mean()),
+            "serving_demand_max": float(serving_demand.max(initial=0.0)),
+            "preparation_demand_mean": float(self.last_preparation_demand.mean()),
+            "preparation_demand_max": float(
+                self.last_preparation_demand.max(initial=0.0)
+            ),
+            "duplication_demand_mean": float(duplication_demand.mean()),
+            "duplication_demand_max": float(duplication_demand.max(initial=0.0)),
+            "aggregate_intended_demand_mean": float(self.last_coordination_demand.mean()),
+            "aggregate_intended_demand_max": float(
+                self.last_coordination_demand.max(initial=0.0)
+            ),
             "mean_memory_resource_outcome": float(resource_outcome.mean()),
             "mean_memory_congestion_outcome": float(congestion_outcome.mean()),
         }
@@ -667,10 +1000,23 @@ class LEOMobilityEnv:
         throughput_deficit = max(0.0, 1.0 - delivered_bits / max(traffic_target_bits, epsilon)) if traffic_target_bits else 0.0
         self.step_index += 1
         self.time_s += self.interval_s
+        self._advance_latent_regimes()
         self._active_effects = self.events.effects(self.step_index)
         for cell_id, satellite in enumerate(self.satellites):
             satellite.capacity_multiplier = float(self._active_effects.cell_capacity_multiplier[cell_id])
         self._refresh_links()
+        if self.v3_enabled:
+            true_sinr = np.asarray([[link.sinr_db for link in row] for row in self.links])
+            telemetry_sinr_mae = float(np.mean(np.abs(self.observed_sinr - true_sinr)))
+            true_load = np.broadcast_to(self.last_requested_pressure, self.observed_load.shape)
+            telemetry_load_mae = float(np.mean(np.abs(self.observed_load - true_load)))
+            latent_degraded_fraction = float(np.mean(self.latent_degradation_state == 1))
+            latent_recovering_fraction = float(np.mean(self.latent_degradation_state == 2))
+        else:
+            telemetry_sinr_mae = 0.0
+            telemetry_load_mae = 0.0
+            latent_degraded_fraction = 0.0
+            latent_recovering_fraction = 0.0
         observations, global_state, next_masks = self._build_output_state()
         done = self.step_index >= int(self.env_cfg["episode_steps"])
         info = {
@@ -691,6 +1037,12 @@ class LEOMobilityEnv:
             "outage_ratio": float(outage_cost),
             "dro": float(tx_metrics["duplicated_bits"] / (tx_metrics["useful_bits"] + epsilon)),
             "mean_valid_action_count": valid_action_count / self.num_agents,
+            "prepare_count": float(action_counts["preparation_requested"]),
+            "commit_count": float(action_counts["handover_started"]),
+            "telemetry_sinr_mae_db": telemetry_sinr_mae,
+            "telemetry_load_mae": telemetry_load_mae,
+            "latent_degraded_fraction": latent_degraded_fraction,
+            "latent_recovering_fraction": latent_recovering_fraction,
             "team_reward": float(reward),
             "constraint_resource_cost": float(control_cost),
             "constraint_outage_cost": float(outage_cost),
@@ -706,7 +1058,7 @@ class LEOMobilityEnv:
             info,
             agent_outcomes=self._last_agent_outcomes.copy(),
             agent_active=self._last_agent_active.copy(),
-            requested_pressure=self.last_requested_pressure.copy(),
+            requested_pressure=self.last_coordination_demand.copy(),
         )
 
     def current_required_rates(self) -> tuple[np.ndarray, np.ndarray]:
@@ -741,32 +1093,62 @@ class LEOMobilityEnv:
             values.extend([0.0] * 5)
         else:
             link = self.links[ue.ue_id][primary]
-            values.extend(
-                [
-                    float(link.visible),
-                    np.clip((link.sinr_db + 20.0) / 50.0, 0.0, 1.0),
-                    link.spectral_efficiency / max(1.0, float(self.channel_cfg["spectral_efficiency_cap"])),
-                    np.clip(self.remaining_visibility[ue.ue_id, primary] / 600.0, 0.0, 1.0),
-                    np.clip(self.last_pressure[primary] / 2.0, 0.0, 1.5),
-                ]
-            )
+            if self.v3_enabled:
+                values.extend(
+                    [
+                        float(link.visible),
+                        np.clip((self.observed_sinr[ue.ue_id, primary] + 20.0) / 50.0, 0.0, 1.0),
+                        self.observed_efficiency[ue.ue_id, primary]
+                        / max(1.0, float(self.channel_cfg["spectral_efficiency_cap"])),
+                        np.clip((self.observed_elevation[ue.ue_id, primary] + 10.0) / 100.0, 0.0, 1.0),
+                        np.clip(self.observed_load[ue.ue_id, primary] / 2.0, 0.0, 1.5),
+                    ]
+                )
+            else:
+                values.extend(
+                    [
+                        float(link.visible),
+                        np.clip((link.sinr_db + 20.0) / 50.0, 0.0, 1.0),
+                        link.spectral_efficiency / max(1.0, float(self.channel_cfg["spectral_efficiency_cap"])),
+                        np.clip(self.remaining_visibility[ue.ue_id, primary] / 600.0, 0.0, 1.0),
+                        np.clip(self.last_pressure[primary] / 2.0, 0.0, 1.5),
+                    ]
+                )
         for slot in range(self.candidate_count):
             if slot >= len(self.candidates[ue.ue_id]):
                 values.extend([0.0] * 7)
                 continue
             cell_id = self.candidates[ue.ue_id][slot]
             link = self.links[ue.ue_id][cell_id]
-            values.extend(
-                [
-                    1.0,
-                    float(cell_id == ue.secondary_cell),
-                    np.clip((link.sinr_db + 20.0) / 50.0, 0.0, 1.0),
-                    link.spectral_efficiency / max(1.0, float(self.channel_cfg["spectral_efficiency_cap"])),
-                    np.clip(self.remaining_visibility[ue.ue_id, cell_id] / 600.0, 0.0, 1.0),
-                    np.clip(self.last_pressure[cell_id] / 2.0, 0.0, 1.5),
-                    np.clip(self.satellites[cell_id].effective_capacity_scale, 0.0, 1.0),
-                ]
-            )
+            if self.v3_enabled:
+                values.extend(
+                    [
+                        1.0,
+                        float(cell_id == ue.secondary_cell),
+                        np.clip((self.observed_sinr[ue.ue_id, cell_id] + 20.0) / 50.0, 0.0, 1.0),
+                        self.observed_efficiency[ue.ue_id, cell_id]
+                        / max(1.0, float(self.channel_cfg["spectral_efficiency_cap"])),
+                        np.clip((self.observed_elevation[ue.ue_id, cell_id] + 10.0) / 100.0, 0.0, 1.0),
+                        np.clip(self.observed_load[ue.ue_id, cell_id] / 2.0, 0.0, 1.5),
+                        np.clip(
+                            (self.observed_sinr_trend[ue.ue_id, cell_id] + 10.0) / 20.0,
+                            0.0,
+                            1.0,
+                        ),
+                    ]
+                )
+            else:
+                values.extend(
+                    [
+                        1.0,
+                        float(cell_id == ue.secondary_cell),
+                        np.clip((link.sinr_db + 20.0) / 50.0, 0.0, 1.0),
+                        link.spectral_efficiency / max(1.0, float(self.channel_cfg["spectral_efficiency_cap"])),
+                        np.clip(self.remaining_visibility[ue.ue_id, cell_id] / 600.0, 0.0, 1.0),
+                        np.clip(self.last_pressure[cell_id] / 2.0, 0.0, 1.5),
+                        np.clip(self.satellites[cell_id].effective_capacity_scale, 0.0, 1.0),
+                    ]
+                )
         result = np.asarray(values, dtype=np.float64)
         if result.shape != (self.obs_dim,):
             raise RuntimeError(f"observation shape mismatch: expected {self.obs_dim}, got {result.shape}")
