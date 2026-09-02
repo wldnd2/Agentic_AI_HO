@@ -172,9 +172,15 @@ class LookaheadReasoner:
         outage_dual_mu: float = 0.0,
     ) -> ReasoningResult:
         masks = env.action_masks() if masks is None else np.asarray(masks, dtype=np.float64)
-        active, required_rates = env.current_required_rates()
-        active_count = float(np.sum(active))
-        aggregate_required_rate = float(np.sum(required_rates))
+        active, required_rates = env.observed_required_rates()
+        if env.v3_enabled:
+            # V3 M3 is local: dynamic cross-UE activity/demand enters decisions
+            # only through M4 prices, never through a direct aggregate shortcut.
+            active_count = 0.0
+            aggregate_required_rate = 0.0
+        else:
+            active_count = float(np.sum(active))
+            aggregate_required_rate = float(np.sum(required_rates))
         features = np.ones((env.num_agents, env.action_dim), dtype=np.float64)
         raw_costs = np.full((env.num_agents, env.action_dim), self.score_clip, dtype=np.float64)
         predicted = np.ones((env.num_agents, env.action_dim), dtype=np.float64)
@@ -196,8 +202,14 @@ class LookaheadReasoner:
         )
         if current_prices.shape != (env.num_cells,) or not np.all(np.isfinite(current_prices)):
             raise ValueError("prices must be a finite per-satellite vector")
-        preparation = env._compute_preparation_reservations()
-        available = np.maximum(0.0, 1.0 - preparation)
+        if env.v3_enabled:
+            # Exact system-wide preparation occupancy is not an M3 oracle.
+            # V3 capacity pressure is represented by actor-consistent observed
+            # load; only nominal data capacity anchors the geometry forecast.
+            available = np.ones(env.num_cells, dtype=np.float64)
+        else:
+            preparation = env._compute_preparation_reservations()
+            available = np.maximum(0.0, 1.0 - preparation)
 
         for ue in env.ues:
             plans = self._plans(env, ue.ue_id, masks[ue.ue_id])
@@ -461,10 +473,15 @@ class LookaheadReasoner:
             ),
         )
         load_scale = min(1.0, fraction / max(fraction, pressure, self.epsilon))
+        capacity_scale = (
+            env.satellites[cell_id].base_capacity_scale
+            if env.v3_enabled
+            else env.satellites[cell_id].effective_capacity_scale
+        )
         raw_capacity = (
             env.satellites[cell_id].bandwidth_hz
             * efficiency
-            * env.satellites[cell_id].effective_capacity_scale
+            * capacity_scale
         )
         rate = min(required_rate, raw_capacity * fraction * load_scale)
         resource_fraction = rate / max(raw_capacity, self.epsilon)
@@ -533,7 +550,13 @@ class LookaheadReasoner:
                 goodput = transmission_rate * delivery_probability
                 # Incremental team-level proxy: current observable aggregate demand
                 # is held persistent over the horizon without peeking at future events.
-                network_base_rate = max(0.0, aggregate_required_rate - required_rate) + stream_rate
+                if env.v3_enabled:
+                    nominal_other_rate = max(0, env.num_agents - 1) * required_rate
+                    network_base_rate = nominal_other_rate + stream_rate
+                else:
+                    network_base_rate = (
+                        max(0.0, aggregate_required_rate - required_rate) + stream_rate
+                    )
                 duplication_cost = stream_rate / (
                     network_base_rate + stream_rate + self.epsilon
                 )
@@ -554,7 +577,12 @@ class LookaheadReasoner:
             preparation_cost = rho_preparation / env.num_cells if reservation_active else 0.0
             if reservation_active and state.secondary_cell is not None:
                 coordination_step += prices[state.secondary_cell] * rho_preparation
-            handover_cost = float(handover_started) / max(active_count, 1.0)
+            handover_normalizer = (
+                float(max(env.num_agents, 1))
+                if env.v3_enabled
+                else max(active_count, 1.0)
+            )
+            handover_cost = float(handover_started) / handover_normalizer
             control_cost = (
                 duplication_cost
                 + self.eta_preparation * preparation_cost

@@ -23,6 +23,12 @@ It deliberately does not decide whether a candidate will remain visible long
 enough. The analytical M3 reasoner retains deterministic ephemeris lookahead,
 but receives no future randomized event or latent-degradation oracle.
 
+For demand and capacity, M3 uses the actor-visible queue plus nominal arrival
+rate, delayed/noisy observed load, and nominal satellite capacity. Physical
+traffic-event multipliers, instantaneous capacity multipliers, and exact
+system-wide preparation occupancy remain outside the V3 reasoner. The nominal
+capacity is held as the short-horizon baseline while ephemeris changes geometry.
+
 ## Temporal uncertainty and reliability diversity
 
 Each episode samples event start, duration, severity, satellite, and applicable

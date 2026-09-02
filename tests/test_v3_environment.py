@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 
 from leo_mappo import LEOMobilityEnv, MAPPO, load_config
+from leo_mappo.reasoning import LookaheadReasoner
 from leo_mappo.runner import evaluate_policy
 from leo_mappo.ue import MobilityState, PacketBatch
 
@@ -41,6 +42,20 @@ def run_four_ue_contention(seed: int) -> tuple[set[int], dict[str, int]]:
         ue.ue_id for ue in env.ues if ue.state == MobilityState.PREPARED
     }
     return admitted, counters
+
+
+def make_reasoning_case(v3: bool = True) -> tuple[LEOMobilityEnv, LookaheadReasoner]:
+    config = (
+        v3_config()
+        if v3
+        else load_config(ROOT / "configs/default.yaml")
+    )
+    env = LEOMobilityEnv(config)
+    env.reset(seed=707)
+    for ue in env.ues:
+        ue.queue.append(PacketBatch(1_000))
+    reasoner = LookaheadReasoner(config["reasoning"], env.reward_cfg)
+    return env, reasoner
 
 
 class V3EnvironmentTest(unittest.TestCase):
@@ -181,6 +196,95 @@ class V3EnvironmentTest(unittest.TestCase):
         agent_a = MAPPO(env_a.obs_dim, env_a.global_state_dim, env_a.action_dim, first["mappo"], first["agent_seed"])
         agent_b = MAPPO(env_b.obs_dim, env_b.global_state_dim, env_b.action_dim, second["mappo"], second["agent_seed"])
         self.assertFalse(np.array_equal(agent_a.actor.parameters["w1"], agent_b.actor.parameters["w1"]))
+
+    def test_v3_reasoner_does_not_read_true_traffic_multiplier(self) -> None:
+        env, reasoner = make_reasoning_case()
+        observed_before = env.observed_required_rates()[1]
+        first = reasoner.analyze(env)
+        true_before = env.current_required_rates()[1]
+        env._active_effects.traffic_multiplier[:] = 4.0
+        true_after = env.current_required_rates()[1]
+        observed_after = env.observed_required_rates()[1]
+        second = reasoner.analyze(env)
+        self.assertFalse(np.array_equal(true_before, true_after))
+        np.testing.assert_array_equal(observed_before, observed_after)
+        np.testing.assert_array_equal(first.raw_costs, second.raw_costs)
+
+    def test_v3_reasoner_does_not_read_true_capacity_multiplier(self) -> None:
+        env, reasoner = make_reasoning_case()
+        first = reasoner.analyze(env)
+        true_before = np.asarray(
+            [satellite.effective_capacity_scale for satellite in env.satellites]
+        )
+        for satellite in env.satellites:
+            satellite.capacity_multiplier = 0.10
+        true_after = np.asarray(
+            [satellite.effective_capacity_scale for satellite in env.satellites]
+        )
+        second = reasoner.analyze(env)
+        self.assertFalse(np.array_equal(true_before, true_after))
+        np.testing.assert_array_equal(first.raw_costs, second.raw_costs)
+
+    def test_v3_reasoner_remains_sensitive_to_future_geometry(self) -> None:
+        env, reasoner = make_reasoning_case()
+        ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
+        target = env.candidates[ue_id][0]
+        action = env.prepare_start
+        satellite = env.satellites[target]
+        satellite.angular_rate_rad_s = 0.0
+        static_geometry = reasoner.analyze(env).raw_costs[ue_id, action]
+        satellite.angular_rate_rad_s = 0.25
+        changing_geometry = reasoner.analyze(env).raw_costs[ue_id, action]
+        self.assertNotEqual(static_geometry, changing_geometry)
+
+    def test_v3_m3_target_scores_ignore_other_ue_dynamic_demand(self) -> None:
+        env, reasoner = make_reasoning_case()
+        target_ue = 0
+        target_observation = env._observation(env.ues[target_ue]).copy()
+        target_candidates = list(env.candidates[target_ue])
+        first = reasoner.analyze(env).raw_costs[target_ue].copy()
+        for other in env.ues[1:]:
+            other.queue.clear()
+            other.mean_arrival_mbps *= 100.0
+        second = reasoner.analyze(env).raw_costs[target_ue]
+        np.testing.assert_array_equal(target_observation, env._observation(env.ues[target_ue]))
+        self.assertEqual(target_candidates, env.candidates[target_ue])
+        np.testing.assert_array_equal(first, second)
+
+    def test_v3_m4_target_scores_retain_price_dependency(self) -> None:
+        env, _ = make_reasoning_case()
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        target_ue = next(
+            index for index, candidates in enumerate(env.candidates) if candidates
+        )
+        target_cell = env.candidates[target_ue][0]
+        action = env.prepare_start
+        zero_prices = np.zeros(env.num_cells, dtype=np.float64)
+        priced = zero_prices.copy()
+        priced[target_cell] = 1.0
+        without_price = reasoner.analyze(env, prices=zero_prices)
+        with_price = reasoner.analyze(env, prices=priced)
+        self.assertNotEqual(
+            without_price.coordination_costs[target_ue, action],
+            with_price.coordination_costs[target_ue, action],
+        )
+        self.assertNotEqual(
+            without_price.raw_costs[target_ue, action],
+            with_price.raw_costs[target_ue, action],
+        )
+
+    def test_v2_reasoner_required_rate_interface_preserves_true_behavior(self) -> None:
+        env, reasoner = make_reasoning_case(v3=False)
+        active_true, required_true = env.current_required_rates()
+        active_reasoner, required_reasoner = env.observed_required_rates()
+        np.testing.assert_array_equal(active_true, active_reasoner)
+        np.testing.assert_array_equal(required_true, required_reasoner)
+        self.assertTrue(np.isfinite(reasoner.analyze(env).raw_costs).all())
 
 
 if __name__ == "__main__":

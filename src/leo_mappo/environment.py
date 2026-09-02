@@ -1062,8 +1062,18 @@ class LEOMobilityEnv:
         )
 
     def current_required_rates(self) -> tuple[np.ndarray, np.ndarray]:
-        """Current observable demand proxy for the non-mutating analytical reasoner."""
+        """True physical demand, retained for V2 reasoning and diagnostics."""
         return self._compute_required_rates(self._active_effects.traffic_multiplier)
+
+    def observed_required_rates(self) -> tuple[np.ndarray, np.ndarray]:
+        """Actor-consistent demand estimate for V3 analytical reasoning.
+
+        Queue occupancy and each UE's configured mean arrival rate are actor
+        inputs. Hidden traffic-event multipliers remain physical-only.
+        """
+        if not self.v3_enabled:
+            return self.current_required_rates()
+        return self._compute_required_rates(np.ones(self.num_agents, dtype=np.float64))
 
     def _build_output_state(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         observations = np.stack([self._observation(ue) for ue in self.ues]).astype(np.float64)
