@@ -1,0 +1,591 @@
+{
+  "configuration": {
+    "episodes": 20,
+    "environment_seed": 7,
+    "agent_seed": 7,
+    "evaluation_action_seed": 7007,
+    "episode_seed_base": 10000,
+    "checkpoint": "outputs/v3_final_1500/m5_seed7/mappo_weights.npz",
+    "checkpoint_mu": 0.32541992186799806,
+    "reasoning_horizon": 6,
+    "tie_epsilon": 1e-08,
+    "counterfactual_sample_limit": 500,
+    "counterfactual_evaluated": 500
+  },
+  "event_counts": {
+    "all_ready_discard": 3141,
+    "all_preparing_discard": 15883,
+    "premature_ready_discard": 775,
+    "premature_preparing_discard": 2983,
+    "successful_ready_keep": 163
+  },
+  "actor_decision": {
+    "deterministic_argmax_discard_fraction": 0.6269292176689728,
+    "stochastic_only_discard_fraction": 0.37307078233102714,
+    "probabilities": {
+      "chosen_release_or_rollback": {
+        "count": 3758,
+        "mean": 0.6282856748197508,
+        "median": 0.59131832537872,
+        "p10": 0.27613867973219397,
+        "p25": 0.40582814264516665,
+        "p75": 0.9230570425963293,
+        "p90": 0.9863535144097384
+      },
+      "stay": {
+        "count": 3758,
+        "mean": 0.3646047183280648,
+        "median": 0.3994579202623942,
+        "p10": 0.013588108721709425,
+        "p25": 0.0681965942536199,
+        "p75": 0.588641387815099,
+        "p90": 0.7155843177807484
+      },
+      "commit_when_legal": {
+        "count": 37,
+        "mean": 0.4896315012399361,
+        "median": 0.40948255819828716,
+        "p10": 0.07664507629512284,
+        "p25": 0.19397439223434945,
+        "p75": 0.8911109408424481,
+        "p90": 0.938845843840304
+      },
+      "discard_minus_stay": {
+        "count": 3758,
+        "mean": 0.26368095649168616,
+        "median": 0.19008957586384942,
+        "p10": -0.4350362293924429,
+        "p25": -0.17891712281679056,
+        "p75": 0.8489517034779251,
+        "p90": 0.9727070288194768
+      }
+    }
+  },
+  "reasoner_release_minus_stay": {
+    "release_lower_fraction": 0.9092602448110697,
+    "release_higher_fraction": 0.0,
+    "approximately_tied_fraction": 0.09073975518893028,
+    "delta_total": {
+      "count": 3758,
+      "mean": -0.07192261468026895,
+      "median": -0.05918360647808618,
+      "p10": -0.15565824589817034,
+      "p25": -0.114106330077002,
+      "p75": -0.013210018282802827,
+      "p90": -0.0004261112956471352
+    },
+    "delta_service": {
+      "count": 3758,
+      "mean": 9.0034205539192e-06,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "delta_coordination": {
+      "count": 3758,
+      "mean": -0.07193161838802352,
+      "median": -0.05918360647808607,
+      "p10": -0.15565824589817046,
+      "p25": -0.11410633007700072,
+      "p75": -0.013210018282801994,
+      "p90": -0.0004261112956471352
+    },
+    "delta_reliability": {
+      "count": 3758,
+      "mean": 2.8720062531902665e-10,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    }
+  },
+  "continuation_value_audit": {
+    "ready_stay_preserves_target": true,
+    "release_immediately_clears_target": true,
+    "release_plan_models_future_reprepare": false,
+    "release_plan_bypasses_reprepare_delay": false,
+    "preparing_discard_clears_progress": true,
+    "immediate_protocol_transition_matches_environment": true,
+    "detail": "RELEASE/ROLLBACK plans clear secondary/timer and are then padded with STAY; the horizon represents readiness loss but no adaptive re-PREPARE continuation"
+  },
+  "counterfactual_keep_vs_release": {
+    "1": {
+      "sample_count": 500,
+      "service_deficit": {
+        "keep_mean": 0.11504933491298408,
+        "release_mean": 0.11471682092506515,
+        "release_minus_keep_mean": -0.00033251398791892195
+      },
+      "service_reward_contribution": {
+        "keep_mean": -0.11504933491298408,
+        "release_mean": -0.11471682092506515,
+        "release_minus_keep_mean": 0.00033251398791892195
+      },
+      "outage_ue_steps": {
+        "keep_mean": 3.316,
+        "release_mean": 3.3,
+        "release_minus_keep_mean": -0.016
+      },
+      "outage_cost": {
+        "keep_mean": 0.2763333331030556,
+        "release_mean": 0.27499999977083334,
+        "release_minus_keep_mean": -0.0013333333322222223
+      },
+      "dual_outage_contribution": {
+        "keep_mean": -0.05738237948112001,
+        "release_mean": -0.05694848625232426,
+        "release_minus_keep_mean": 0.0004338932287957531
+      },
+      "target_ready_steps": {
+        "keep_mean": 1.0,
+        "release_mean": 0.0,
+        "release_minus_keep_mean": -1.0
+      },
+      "resource_cost": {
+        "keep_mean": 0.004922499205568601,
+        "release_mean": 0.004397458326412432,
+        "release_minus_keep_mean": -0.0005250408791561689
+      },
+      "resource_reward_contribution": {
+        "keep_mean": -0.0012306248013921502,
+        "release_mean": -0.001099364581603108,
+        "release_minus_keep_mean": 0.00013126021978904223
+      },
+      "preparation_requests": {
+        "keep_mean": 3.62,
+        "release_mean": 3.62,
+        "release_minus_keep_mean": 0.0
+      },
+      "later_reprepare": {
+        "keep_mean": 0.0,
+        "release_mean": 0.0,
+        "release_minus_keep_mean": 0.0
+      },
+      "team_reward": {
+        "keep_mean": -0.17366233919549623,
+        "release_mean": -0.17276467175899254,
+        "release_minus_keep_mean": 0.0008976674365037166
+      }
+    },
+    "2": {
+      "sample_count": 498,
+      "service_deficit": {
+        "keep_mean": 0.22839988854050167,
+        "release_mean": 0.22955274486952368,
+        "release_minus_keep_mean": 0.0011528563290219662
+      },
+      "service_reward_contribution": {
+        "keep_mean": -0.22839988854050167,
+        "release_mean": -0.22955274486952368,
+        "release_minus_keep_mean": -0.0011528563290219662
+      },
+      "outage_ue_steps": {
+        "keep_mean": 6.528112449799197,
+        "release_mean": 6.580321285140562,
+        "release_minus_keep_mean": 0.05220883534136546
+      },
+      "outage_cost": {
+        "keep_mean": 0.5440093703632586,
+        "release_mean": 0.5483601066380801,
+        "release_minus_keep_mean": 0.004350736274821508
+      },
+      "dual_outage_contribution": {
+        "keep_mean": -0.11194750242547082,
+        "release_mean": -0.11336331868409148,
+        "release_minus_keep_mean": -0.0014158162586206796
+      },
+      "target_ready_steps": {
+        "keep_mean": 1.28714859437751,
+        "release_mean": 0.0,
+        "release_minus_keep_mean": -1.28714859437751
+      },
+      "resource_cost": {
+        "keep_mean": 0.010729603989085124,
+        "release_mean": 0.008192936517189369,
+        "release_minus_keep_mean": -0.0025366674718957536
+      },
+      "resource_reward_contribution": {
+        "keep_mean": -0.002682400997271281,
+        "release_mean": -0.0020482341292973423,
+        "release_minus_keep_mean": 0.0006341668679739384
+      },
+      "preparation_requests": {
+        "keep_mean": 7.255020080321285,
+        "release_mean": 7.847389558232932,
+        "release_minus_keep_mean": 0.5923694779116466
+      },
+      "later_reprepare": {
+        "keep_mean": 0.0,
+        "release_mean": 0.35542168674698793,
+        "release_minus_keep_mean": 0.35542168674698793
+      },
+      "team_reward": {
+        "keep_mean": -0.3430297919632438,
+        "release_mean": -0.34496429768291254,
+        "release_minus_keep_mean": -0.0019345057196687072
+      }
+    },
+    "4": {
+      "sample_count": 493,
+      "service_deficit": {
+        "keep_mean": 0.435917519144407,
+        "release_mean": 0.45514850565406734,
+        "release_minus_keep_mean": 0.01923098650966029
+      },
+      "service_reward_contribution": {
+        "keep_mean": -0.435917519144407,
+        "release_mean": -0.45514850565406734,
+        "release_minus_keep_mean": -0.01923098650966029
+      },
+      "outage_ue_steps": {
+        "keep_mean": 12.141987829614605,
+        "release_mean": 12.811359026369168,
+        "release_minus_keep_mean": 0.6693711967545639
+      },
+      "outage_cost": {
+        "keep_mean": 1.0118323182913567,
+        "release_mean": 1.0676132513077528,
+        "release_minus_keep_mean": 0.055780933016396216
+      },
+      "dual_outage_contribution": {
+        "keep_mean": -0.1991024252146894,
+        "release_mean": -0.2172546520786091,
+        "release_minus_keep_mean": -0.018152226863919693
+      },
+      "target_ready_steps": {
+        "keep_mean": 1.539553752535497,
+        "release_mean": 0.1744421906693712,
+        "release_minus_keep_mean": -1.3651115618661258
+      },
+      "resource_cost": {
+        "keep_mean": 0.019709343892530783,
+        "release_mean": 0.017873936595394893,
+        "release_minus_keep_mean": -0.001835407297135888
+      },
+      "resource_reward_contribution": {
+        "keep_mean": -0.004927335973132696,
+        "release_mean": -0.004468484148848723,
+        "release_minus_keep_mean": 0.000458851824283972
+      },
+      "preparation_requests": {
+        "keep_mean": 14.685598377281947,
+        "release_mean": 15.517241379310345,
+        "release_minus_keep_mean": 0.8316430020283976
+      },
+      "later_reprepare": {
+        "keep_mean": 0.1440162271805274,
+        "release_mean": 0.4482758620689655,
+        "release_minus_keep_mean": 0.30425963488843816
+      },
+      "team_reward": {
+        "keep_mean": -0.6399472803322293,
+        "release_mean": -0.6768716418815252,
+        "release_minus_keep_mean": -0.036924361549296014
+      }
+    },
+    "8": {
+      "sample_count": 486,
+      "service_deficit": {
+        "keep_mean": 0.8058044238306499,
+        "release_mean": 0.8558355980388903,
+        "release_minus_keep_mean": 0.05003117420824045
+      },
+      "service_reward_contribution": {
+        "keep_mean": -0.8058044238306499,
+        "release_mean": -0.8558355980388903,
+        "release_minus_keep_mean": -0.05003117420824045
+      },
+      "outage_ue_steps": {
+        "keep_mean": 21.825102880658438,
+        "release_mean": 23.506172839506174,
+        "release_minus_keep_mean": 1.6810699588477367
+      },
+      "outage_cost": {
+        "keep_mean": 1.8187585718725705,
+        "release_mean": 1.9588477349931412,
+        "release_minus_keep_mean": 0.14008916312057043
+      },
+      "dual_outage_contribution": {
+        "keep_mean": -0.33152433486112526,
+        "release_mean": -0.3771121393783745,
+        "release_minus_keep_mean": -0.04558780451724927
+      },
+      "target_ready_steps": {
+        "keep_mean": 1.7098765432098766,
+        "release_mean": 0.360082304526749,
+        "release_minus_keep_mean": -1.3497942386831276
+      },
+      "resource_cost": {
+        "keep_mean": 0.03811233783012508,
+        "release_mean": 0.037197574325450546,
+        "release_minus_keep_mean": -0.0009147635046745321
+      },
+      "resource_reward_contribution": {
+        "keep_mean": -0.00952808445753127,
+        "release_mean": -0.009299393581362636,
+        "release_minus_keep_mean": 0.00022869087616863302
+      },
+      "preparation_requests": {
+        "keep_mean": 29.061728395061728,
+        "release_mean": 30.16460905349794,
+        "release_minus_keep_mean": 1.102880658436214
+      },
+      "later_reprepare": {
+        "keep_mean": 0.24691358024691357,
+        "release_mean": 0.5288065843621399,
+        "release_minus_keep_mean": 0.28189300411522633
+      },
+      "team_reward": {
+        "keep_mean": -1.1468568431493062,
+        "release_mean": -1.2422471309986274,
+        "release_minus_keep_mean": -0.09539028784932106
+      }
+    },
+    "16": {
+      "sample_count": 467,
+      "service_deficit": {
+        "keep_mean": 1.3921809627828348,
+        "release_mean": 1.4895958670182716,
+        "release_minus_keep_mean": 0.09741490423543714
+      },
+      "service_reward_contribution": {
+        "keep_mean": -1.3921809627828348,
+        "release_mean": -1.4895958670182716,
+        "release_minus_keep_mean": -0.09741490423543714
+      },
+      "outage_ue_steps": {
+        "keep_mean": 36.70449678800856,
+        "release_mean": 39.08565310492505,
+        "release_minus_keep_mean": 2.3811563169164884
+      },
+      "outage_cost": {
+        "keep_mean": 3.058708063118457,
+        "release_mean": 3.257137756029473,
+        "release_minus_keep_mean": 0.198429692911016
+      },
+      "dual_outage_contribution": {
+        "keep_mean": -0.47469266392822695,
+        "release_mean": -0.5392656390916207,
+        "release_minus_keep_mean": -0.06457297516339368
+      },
+      "target_ready_steps": {
+        "keep_mean": 1.7730192719486082,
+        "release_mean": 0.5481798715203426,
+        "release_minus_keep_mean": -1.2248394004282654
+      },
+      "resource_cost": {
+        "keep_mean": 0.07510179643983274,
+        "release_mean": 0.07446725724510322,
+        "release_minus_keep_mean": -0.0006345391947295126
+      },
+      "resource_reward_contribution": {
+        "keep_mean": -0.018775449109958185,
+        "release_mean": -0.018616814311275806,
+        "release_minus_keep_mean": 0.00015863479868237815
+      },
+      "preparation_requests": {
+        "keep_mean": 58.098501070663815,
+        "release_mean": 58.66167023554604,
+        "release_minus_keep_mean": 0.563169164882227
+      },
+      "later_reprepare": {
+        "keep_mean": 0.3169164882226981,
+        "release_mean": 0.6638115631691649,
+        "release_minus_keep_mean": 0.3468950749464668
+      },
+      "team_reward": {
+        "keep_mean": -1.8856490758210198,
+        "release_mean": -2.047478320421168,
+        "release_minus_keep_mean": -0.16182924460014844
+      }
+    }
+  },
+  "immediate_release_minus_keep": {
+    "service_deficit": {
+      "count": 500,
+      "mean": -0.00033251398791892195,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "service_reward_contribution": {
+      "count": 500,
+      "mean": 0.00033251398791892195,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "outage_ue_steps": {
+      "count": 500,
+      "mean": -0.016,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "outage_cost": {
+      "count": 500,
+      "mean": -0.0013333333322222223,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "dual_outage_contribution": {
+      "count": 500,
+      "mean": 0.0004338932287957531,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "target_ready_steps": {
+      "count": 500,
+      "mean": -1.0,
+      "median": -1.0,
+      "p10": -1.0,
+      "p25": -1.0,
+      "p75": -1.0,
+      "p90": -1.0
+    },
+    "resource_cost": {
+      "count": 500,
+      "mean": -0.0005250408791561689,
+      "median": -0.00033333333333333305,
+      "p10": -0.0003333333333333339,
+      "p25": -0.00033333333333333327,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "resource_reward_contribution": {
+      "count": 500,
+      "mean": 0.00013126021978904223,
+      "median": 8.333333333333326e-05,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 8.333333333333332e-05,
+      "p90": 8.333333333333348e-05
+    },
+    "preparation_requests": {
+      "count": 500,
+      "mean": 0.0,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "later_reprepare": {
+      "count": 500,
+      "mean": 0.0,
+      "median": 0.0,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p90": 0.0
+    },
+    "team_reward": {
+      "count": 500,
+      "mean": 0.0008976674365037166,
+      "median": 8.333333333332416e-05,
+      "p10": 0.0,
+      "p25": 0.0,
+      "p75": 8.333333333333456e-05,
+      "p90": 8.333333333335469e-05
+    }
+  },
+  "coordination_price": {
+    "low_quartile_threshold": 0.2808545071571593,
+    "high_quartile_threshold": 2.0871867677220624,
+    "premature_discard_target_price": {
+      "count": 3758,
+      "mean": 1.3201781578552179,
+      "median": 1.1170591685116436,
+      "p10": 0.00804262460391466,
+      "p25": 0.24933208564224335,
+      "p75": 2.151088506313486,
+      "p90": 2.935337252232693
+    },
+    "successful_keep_target_price": {
+      "count": 163,
+      "mean": 1.2557747394294125,
+      "median": 0.8939893448570613,
+      "p10": 0.0,
+      "p25": 0.20577723743670484,
+      "p75": 1.9998829184825806,
+      "p90": 2.773850791826507
+    },
+    "premature_coordination_cost_keep": {
+      "count": 3758,
+      "mean": 2.0184135605709725,
+      "median": 1.2739010562911428,
+      "p10": 0.19668666287501477,
+      "p25": 0.5923286976120936,
+      "p75": 2.48723904499466,
+      "p90": 4.519013292814865
+    },
+    "premature_coordination_cost_discard": {
+      "count": 3758,
+      "mean": 1.9464819421829485,
+      "median": 1.19927701600627,
+      "p10": 0.12922341133733017,
+      "p25": 0.5291249933740088,
+      "p75": 2.4092063483840955,
+      "p90": 4.434722826716614
+    },
+    "low_price_quartile_discard_probability": 0.48739309119182495,
+    "high_price_quartile_discard_probability": 0.561195024433585
+  },
+  "release_to_outage_vs_horizon": {
+    "outage_link_count": 12494,
+    "lead_steps": {
+      "count": 12494,
+      "mean": 8.21146150152073,
+      "median": 5.0,
+      "p10": 0.0,
+      "p25": 1.0,
+      "p75": 11.0,
+      "p90": 19.0
+    },
+    "within_half_horizon_fraction": 0.4414919161197375,
+    "within_horizon_fraction": 0.5739554986393469,
+    "beyond_horizon_fraction": 0.42604450136065314
+  },
+  "diagnostic_classification": {
+    "R1_REASONER_PREFERS_RELEASE": {
+      "count": 2324,
+      "fraction": 0.6184140500266099
+    },
+    "R3_REASONER_NEAR_TIE_STOCHASTIC_RELEASE": {
+      "count": 137,
+      "fraction": 0.036455561468866415
+    },
+    "R4_IMMEDIATE_RESOURCE_INCENTIVE_DOMINATES": {
+      "count": 183,
+      "fraction": 0.04869611495476317
+    },
+    "R5_COORDINATION_PRICE_DOMINATES": {
+      "count": 929,
+      "fraction": 0.24720596061734965
+    },
+    "R6_REASONER_PROTOCOL_SIMULATION_MISMATCH": {
+      "count": 0,
+      "fraction": 0.0
+    },
+    "R7_OTHER": {
+      "count": 185,
+      "fraction": 0.04922831293241086
+    }
+  },
+  "counterfactual_randomness_limitation": "KEEP and RELEASE branches start from identical environment and actor RNG states. The actor consumes the same number of draws per step, but action-dependent environment RNG consumption can desynchronize later exogenous draws."
+}

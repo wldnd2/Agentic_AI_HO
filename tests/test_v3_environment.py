@@ -3,11 +3,17 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 from leo_mappo import LEOMobilityEnv, MAPPO, load_config
-from leo_mappo.reasoning import LookaheadReasoner
+from leo_mappo.reasoning import (
+    LookaheadReasoner,
+    _duplicated_stream_rates,
+    _planning_reliability_risk,
+    _predicted_goodputs,
+)
 from leo_mappo.runner import evaluate_policy
 from leo_mappo.ue import MobilityState, PacketBatch
 
@@ -59,6 +65,79 @@ def make_reasoning_case(v3: bool = True) -> tuple[LEOMobilityEnv, LookaheadReaso
 
 
 class V3EnvironmentTest(unittest.TestCase):
+    def test_service_clipping_is_separate_from_reliability_headroom(self) -> None:
+        required_rate = 100.0
+        service_goodputs = []
+        reliability_risks = []
+        for potential_rate in (required_rate, 1.5 * required_rate):
+            service_rate = min(required_rate, potential_rate)
+            service_goodput, reliability_goodput = _predicted_goodputs(
+                service_rate,
+                potential_rate,
+                delivery_probability=1.0,
+                preserve_reliability_headroom=True,
+            )
+            service_goodputs.append(service_goodput)
+            reliability_risks.append(
+                _planning_reliability_risk(
+                    reliability_goodput,
+                    required_rate,
+                    outage_service_ratio=0.80,
+                    temperature=0.10,
+                    epsilon=1e-8,
+                )
+            )
+        deficits = [
+            max(0.0, required_rate - goodput) / required_rate
+            for goodput in service_goodputs
+        ]
+        self.assertEqual(deficits, [0.0, 0.0])
+        self.assertLess(reliability_risks[1], reliability_risks[0])
+
+    def test_planning_risk_at_required_rate_matches_sigmoid_minus_two(self) -> None:
+        risk = _planning_reliability_risk(
+            expected_goodput_bps=100.0,
+            required_rate_bps=100.0,
+            outage_service_ratio=0.80,
+            temperature=0.10,
+            epsilon=1e-8,
+        )
+        self.assertAlmostEqual(risk, 1.0 / (1.0 + np.exp(2.0)), places=9)
+
+    def test_planning_risk_strictly_decreases_with_potential_headroom(self) -> None:
+        required_rate = 100.0
+        risks = []
+        for multiplier in (0.8, 1.0, 1.2, 1.5):
+            potential_rate = multiplier * required_rate
+            service_rate = min(required_rate, potential_rate)
+            _, reliability_goodput = _predicted_goodputs(
+                service_rate,
+                potential_rate,
+                delivery_probability=1.0,
+                preserve_reliability_headroom=True,
+            )
+            risks.append(
+                _planning_reliability_risk(
+                    reliability_goodput,
+                    required_rate,
+                    outage_service_ratio=0.80,
+                    temperature=0.10,
+                    epsilon=1e-8,
+                )
+            )
+        self.assertTrue(all(left > right for left, right in zip(risks, risks[1:])))
+
+    def test_duplication_headroom_keeps_one_packet_stream(self) -> None:
+        service_rate, potential_rate = _duplicated_stream_rates(
+            primary_service_rate_bps=100.0,
+            primary_potential_rate_bps=200.0,
+            secondary_service_rate_bps=100.0,
+            secondary_potential_rate_bps=150.0,
+        )
+        self.assertEqual(service_rate, 100.0)
+        self.assertEqual(potential_rate, 150.0)
+        self.assertLess(potential_rate, 200.0 + 150.0)
+
     def test_v2_explicit_flag_is_legacy_equivalent(self) -> None:
         legacy = load_config(ROOT / "configs/default.yaml")
         explicit = deepcopy(legacy)
@@ -225,6 +304,32 @@ class V3EnvironmentTest(unittest.TestCase):
         self.assertFalse(np.array_equal(true_before, true_after))
         np.testing.assert_array_equal(first.raw_costs, second.raw_costs)
 
+    def test_v3_m5_reliability_prediction_ignores_hidden_future_events(self) -> None:
+        env, _ = make_reasoning_case()
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+            use_constraint=True,
+        )
+        prices = np.full(env.num_cells, 0.25, dtype=np.float64)
+        first = reasoner.analyze(env, prices=prices, outage_dual_mu=0.5)
+        env._active_effects.traffic_multiplier[:] = 4.0
+        env.latent_degradation_state[:] = 2
+        env.latent_degradation_timer[:] = 999
+        for satellite in env.satellites:
+            satellite.capacity_multiplier = 0.05
+        for spec in env.events.realized_specs:
+            spec["severity"] = 999.0
+            spec["duration_steps"] = 999
+        second = reasoner.analyze(env, prices=prices, outage_dual_mu=0.5)
+        np.testing.assert_array_equal(
+            first.planning_reliability_risks,
+            second.planning_reliability_risks,
+        )
+        np.testing.assert_array_equal(first.total_costs, second.total_costs)
+
     def test_v3_reasoner_remains_sensitive_to_future_geometry(self) -> None:
         env, reasoner = make_reasoning_case()
         ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
@@ -298,6 +403,181 @@ class V3EnvironmentTest(unittest.TestCase):
             with_price.total_costs[target_ue, action],
             with_price.service_costs[target_ue, action]
             + with_price.coordination_costs[target_ue, action],
+        )
+
+    def test_v3_ready_stay_and_release_receive_no_price_rebate(self) -> None:
+        env, _ = make_reasoning_case()
+        ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
+        ue = env.ues[ue_id]
+        ue.secondary_cell = env.candidates[ue_id][0]
+        ue.state = MobilityState.PREPARED
+        ue.protocol_timer = 0
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        result = reasoner.analyze(env, prices=np.ones(env.num_cells))
+        self.assertAlmostEqual(result.coordination_costs[ue_id, 0], 0.0)
+        self.assertAlmostEqual(
+            result.coordination_costs[ue_id, env.release_action], 0.0
+        )
+
+    def test_v3_prepare_has_positive_price_scaled_incremental_demand(self) -> None:
+        env, _ = make_reasoning_case()
+        ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
+        target = env.candidates[ue_id][0]
+        action = env.prepare_start
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        low_prices = np.zeros(env.num_cells)
+        low_prices[target] = 0.5
+        high_prices = low_prices.copy()
+        high_prices[target] = 2.0
+        low = reasoner.analyze(env, prices=low_prices)
+        high = reasoner.analyze(env, prices=high_prices)
+        self.assertGreater(low.coordination_costs[ue_id, action], 0.0)
+        self.assertGreater(
+            high.coordination_costs[ue_id, action],
+            low.coordination_costs[ue_id, action],
+        )
+
+    def test_v3_dup_on_has_positive_price_scaled_incremental_demand(self) -> None:
+        env, _ = make_reasoning_case()
+        ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
+        ue = env.ues[ue_id]
+        target = env.candidates[ue_id][0]
+        ue.secondary_cell = target
+        ue.state = MobilityState.PREPARED
+        ue.protocol_timer = 0
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        low_prices = np.zeros(env.num_cells)
+        low_prices[target] = 0.5
+        high_prices = low_prices.copy()
+        high_prices[target] = 2.0
+        low = reasoner.analyze(env, prices=low_prices)
+        high = reasoner.analyze(env, prices=high_prices)
+        self.assertGreater(low.coordination_costs[ue_id, env.dup_on_action], 0.0)
+        self.assertGreater(
+            high.coordination_costs[ue_id, env.dup_on_action],
+            low.coordination_costs[ue_id, env.dup_on_action],
+        )
+
+    def test_v3_all_legal_actions_have_no_negative_coordination_credit(self) -> None:
+        env, _ = make_reasoning_case()
+        ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
+        ue = env.ues[ue_id]
+        ue.secondary_cell = env.candidates[ue_id][0]
+        ue.state = MobilityState.DUPLICATING
+        ue.protocol_timer = 0
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        result = reasoner.analyze(env, prices=np.ones(env.num_cells))
+        legal = env.action_masks()[ue_id] > 0.0
+        self.assertTrue(np.all(result.coordination_costs[ue_id, legal] >= -1e-12))
+        self.assertAlmostEqual(
+            result.coordination_costs[ue_id, env.dup_off_action], 0.0
+        )
+        self.assertAlmostEqual(
+            result.coordination_costs[ue_id, env.rollback_action], 0.0
+        )
+
+    def test_v3_commit_prices_only_positive_target_increment(self) -> None:
+        env, _ = make_reasoning_case()
+        ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
+        ue = env.ues[ue_id]
+        target = env.candidates[ue_id][0]
+        ue.secondary_cell = target
+        ue.state = MobilityState.PREPARED
+        ue.protocol_timer = 0
+        prices = np.zeros(env.num_cells)
+        prices[ue.primary_cell] = 5.0
+        prices[target] = 1.0
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        result = reasoner.analyze(env, prices=prices)
+        self.assertGreater(result.coordination_costs[ue_id, env.commit_action], 0.0)
+
+    def test_v3_price_still_ranks_new_demand_between_candidates(self) -> None:
+        env, _ = make_reasoning_case()
+        ue_id = next(
+            index for index, candidates in enumerate(env.candidates)
+            if len(candidates) >= 2
+        )
+        first_target, second_target = env.candidates[ue_id][:2]
+        env.remaining_visibility[ue_id, [first_target, second_target]] = 1e9
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        prices = np.zeros(env.num_cells)
+        prices[first_target] = 0.25
+        prices[second_target] = 2.0
+        with patch.object(reasoner, "_future_link", return_value=(1.0, 1.0)):
+            result = reasoner.analyze(env, prices=prices)
+        self.assertLess(
+            result.coordination_costs[ue_id, env.prepare_start],
+            result.coordination_costs[ue_id, env.prepare_start + 1],
+        )
+
+    def test_v3_m5_reliability_component_is_independent_of_coordination(self) -> None:
+        env, _ = make_reasoning_case()
+        prices = np.zeros(env.num_cells)
+        service_reliability = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_constraint=True,
+        ).analyze(env, prices=prices, outage_dual_mu=2.0)
+        coordinated_reliability = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+            use_constraint=True,
+        ).analyze(env, prices=prices, outage_dual_mu=2.0)
+        np.testing.assert_array_equal(
+            service_reliability.reliability_costs,
+            coordinated_reliability.reliability_costs,
+        )
+
+    def test_v2_absolute_coordination_semantics_are_unchanged(self) -> None:
+        env, _ = make_reasoning_case(v3=False)
+        ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
+        ue = env.ues[ue_id]
+        ue.secondary_cell = env.candidates[ue_id][0]
+        ue.state = MobilityState.PREPARED
+        ue.protocol_timer = 0
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+        )
+        result = reasoner.analyze(env, prices=np.ones(env.num_cells))
+        self.assertGreater(
+            result.coordination_costs[ue_id, 0],
+            result.coordination_costs[ue_id, env.release_action],
         )
 
     def test_v3_m5_reliability_cost_is_additive(self) -> None:

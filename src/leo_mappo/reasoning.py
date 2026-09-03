@@ -101,6 +101,38 @@ def _planning_reliability_risk(
     return float(min(1.0, max(0.0, risk)))
 
 
+def _predicted_goodputs(
+    service_transmission_rate_bps: float,
+    potential_transmission_rate_bps: float,
+    delivery_probability: float,
+    preserve_reliability_headroom: bool,
+) -> tuple[float, float]:
+    """Keep served-traffic clipping separate from M5 reliability headroom."""
+    service_goodput = service_transmission_rate_bps * delivery_probability
+    reliability_transmission_rate = (
+        potential_transmission_rate_bps
+        if preserve_reliability_headroom
+        else service_transmission_rate_bps
+    )
+    reliability_goodput = reliability_transmission_rate * delivery_probability
+    if not math.isfinite(service_goodput) or not math.isfinite(reliability_goodput):
+        raise FloatingPointError("predicted goodputs must be finite")
+    return float(service_goodput), float(reliability_goodput)
+
+
+def _duplicated_stream_rates(
+    primary_service_rate_bps: float,
+    primary_potential_rate_bps: float,
+    secondary_service_rate_bps: float,
+    secondary_potential_rate_bps: float,
+) -> tuple[float, float]:
+    """Represent one duplicated packet stream without summing its copies."""
+    return (
+        float(min(primary_service_rate_bps, secondary_service_rate_bps)),
+        float(min(primary_potential_rate_bps, secondary_potential_rate_bps)),
+    )
+
+
 @dataclass
 class ReasoningResult:
     features: np.ndarray
@@ -476,9 +508,9 @@ class LookaheadReasoner:
         offset: int,
         required_rate: float,
         available: np.ndarray,
-    ) -> tuple[float, float, float]:
+    ) -> tuple[float, float, float, float]:
         if cell_id is None or required_rate <= 0.0:
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
         efficiency, success = self._future_link(env, ue_id, cell_id, offset)
         fraction = available[cell_id]
         pressure = max(
@@ -500,9 +532,15 @@ class LookaheadReasoner:
             * efficiency
             * capacity_scale
         )
-        rate = min(required_rate, raw_capacity * fraction * load_scale)
-        resource_fraction = rate / max(raw_capacity, self.epsilon)
-        return float(rate), success, float(max(0.0, resource_fraction))
+        potential_rate = raw_capacity * fraction * load_scale
+        service_rate = min(required_rate, potential_rate)
+        resource_fraction = service_rate / max(raw_capacity, self.epsilon)
+        return (
+            float(service_rate),
+            float(potential_rate),
+            success,
+            float(max(0.0, resource_fraction)),
+        )
 
     def _evaluate_plan(
         self,
@@ -537,6 +575,13 @@ class LookaheadReasoner:
             int(ue.protocol_timer),
             int(ue.last_switch_step),
         )
+        baseline_state = _HypotheticalState(
+            ue.primary_cell,
+            ue.secondary_cell,
+            ue.state,
+            int(ue.protocol_timer),
+            int(ue.last_switch_step),
+        )
         total = 0.0
         total_service = 0.0
         total_coordination = 0.0
@@ -552,33 +597,51 @@ class LookaheadReasoner:
         rho_preparation = float(env.protocol_cfg["preparation_resource_fraction"])
         for offset, action in enumerate(plan):
             self._advance_hypothetical(env, state, offset, ue_id)
+            if env.v3_enabled:
+                self._advance_hypothetical(env, baseline_state, offset, ue_id)
+                self._apply_hypothetical_action(
+                    env, baseline_state, 0, None, ue_id, offset
+                )
             target = prepare_target if env.prepare_start <= action < env.prepare_start + env.candidate_count else None
             handover_started = self._apply_hypothetical_action(
                 env, state, action, target, ue_id, offset
             )
-            primary_rate, primary_success, primary_fraction = self._predicted_leg(
+            (
+                primary_rate,
+                primary_potential_rate,
+                primary_success,
+                primary_fraction,
+            ) = self._predicted_leg(
                 env, ue_id, state.primary_cell, offset, required_rate, available
             )
             transmission_rate = primary_rate
+            potential_transmission_rate = primary_potential_rate
             delivery_probability = primary_success
-            goodput = transmission_rate * delivery_probability
-            coordination_step = (
-                prices[state.primary_cell] * primary_fraction
-                if state.primary_cell is not None
-                else 0.0
-            )
+            action_demand = np.zeros(env.num_cells, dtype=np.float64)
+            if state.primary_cell is not None:
+                action_demand[state.primary_cell] += primary_fraction
             duplication_cost = 0.0
             if state.mobility_state == MobilityState.DUPLICATING and state.secondary_cell is not None:
-                secondary_rate, secondary_success, secondary_fraction = self._predicted_leg(
+                (
+                    secondary_rate,
+                    secondary_potential_rate,
+                    secondary_success,
+                    secondary_fraction,
+                ) = self._predicted_leg(
                     env, ue_id, state.secondary_cell, offset, required_rate, available
                 )
-                stream_rate = min(primary_rate, secondary_rate)
+                stream_rate, potential_stream_rate = _duplicated_stream_rates(
+                    primary_rate,
+                    primary_potential_rate,
+                    secondary_rate,
+                    secondary_potential_rate,
+                )
                 probability = joint_delivery_probability(
                     primary_success, secondary_success, failure_correlation=0.15
                 )
                 transmission_rate = stream_rate
+                potential_transmission_rate = potential_stream_rate
                 delivery_probability = probability
-                goodput = transmission_rate * delivery_probability
                 # Retained as a diagnostic in V3 and as a ranked V2 heuristic.
                 if env.v3_enabled:
                     nominal_other_rate = max(0, env.num_agents - 1) * required_rate
@@ -591,9 +654,18 @@ class LookaheadReasoner:
                     network_base_rate + stream_rate + self.epsilon
                 )
                 duplication_cost = float(np.clip(duplication_cost, 0.0, 1.0))
-                coordination_step += prices[state.secondary_cell] * secondary_fraction
+                action_demand[state.secondary_cell] += secondary_fraction
+            service_goodput, reliability_goodput = _predicted_goodputs(
+                transmission_rate,
+                potential_transmission_rate,
+                delivery_probability,
+                preserve_reliability_headroom=(
+                    env.v3_enabled and self.use_constraint
+                ),
+            )
             deficit = (
-                max(0.0, required_rate - goodput) / (required_rate + self.epsilon)
+                max(0.0, required_rate - service_goodput)
+                / (required_rate + self.epsilon)
                 if required_rate > 0.0
                 else 0.0
             )
@@ -606,7 +678,52 @@ class LookaheadReasoner:
             )
             preparation_cost = rho_preparation / env.num_cells if reservation_active else 0.0
             if reservation_active and state.secondary_cell is not None:
-                coordination_step += prices[state.secondary_cell] * rho_preparation
+                action_demand[state.secondary_cell] += rho_preparation
+            if env.v3_enabled:
+                baseline_demand = np.zeros(env.num_cells, dtype=np.float64)
+                if baseline_state.primary_cell is not None:
+                    *_, baseline_primary_fraction = self._predicted_leg(
+                        env,
+                        ue_id,
+                        baseline_state.primary_cell,
+                        offset,
+                        required_rate,
+                        available,
+                    )
+                    baseline_demand[baseline_state.primary_cell] += (
+                        baseline_primary_fraction
+                    )
+                if (
+                    baseline_state.mobility_state == MobilityState.DUPLICATING
+                    and baseline_state.secondary_cell is not None
+                ):
+                    *_, baseline_secondary_fraction = self._predicted_leg(
+                        env,
+                        ue_id,
+                        baseline_state.secondary_cell,
+                        offset,
+                        required_rate,
+                        available,
+                    )
+                    baseline_demand[baseline_state.secondary_cell] += (
+                        baseline_secondary_fraction
+                    )
+                baseline_reservation_active = baseline_state.mobility_state in (
+                    MobilityState.PREPARED,
+                    MobilityState.DUPLICATING,
+                    MobilityState.SWITCHING,
+                )
+                if (
+                    baseline_reservation_active
+                    and baseline_state.secondary_cell is not None
+                ):
+                    baseline_demand[baseline_state.secondary_cell] += rho_preparation
+                incremental_demand = np.maximum(
+                    action_demand - baseline_demand, 0.0
+                )
+                coordination_step = float(np.dot(prices, incremental_demand))
+            else:
+                coordination_step = float(np.dot(prices, action_demand))
             handover_normalizer = (
                 float(max(env.num_agents, 1))
                 if env.v3_enabled
@@ -628,7 +745,7 @@ class LookaheadReasoner:
                 self.epsilon,
             )
             planning_reliability_risk = _planning_reliability_risk(
-                goodput,
+                reliability_goodput,
                 required_rate,
                 env.outage_service_ratio,
                 self.reliability_risk_temperature,
