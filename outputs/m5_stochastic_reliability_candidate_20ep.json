@@ -1,0 +1,373 @@
+{
+  "configuration": {
+    "episodes": 20,
+    "sampled_states": 500,
+    "action_evaluations": 1588,
+    "scenario_count_per_action": 32,
+    "total_scenario_action_evaluations": 50816,
+    "planning_scenario_seed": 9107,
+    "environment_seed": 7,
+    "agent_seed": 7,
+    "evaluation_action_seed": 7007,
+    "checkpoint": "outputs/v3_validation_420/m5_marginal_headroom/mappo_weights.npz",
+    "checkpoint_mu": 0.11908854166452414,
+    "horizons": [
+      1,
+      2,
+      4,
+      6
+    ]
+  },
+  "sample_composition": {
+    "pre_outage_1_3": 168,
+    "preparing_ready": 277,
+    "nonzero_current_risk_spread": 208
+  },
+  "saturation": {
+    "approximately_zero_threshold": 1e-12,
+    "current": {
+      "count": 1588,
+      "mean": 0.023182057273246837,
+      "median": 6.519591009728464e-16,
+      "p75": 3.7217283720106716e-10,
+      "p90": 0.00011390445339219121,
+      "p95": 0.06998529456057172,
+      "p99": 0.6922283426830139,
+      "fraction_approximately_zero": 0.6259445843828715
+    },
+    "scenario_h6": {
+      "count": 1588,
+      "mean": 0.279640867916847,
+      "median": 0.09926794921874998,
+      "p75": 0.30293641845703123,
+      "p90": 0.6310202734374999,
+      "p95": 0.9455707294921846,
+      "p99": 4.154404512597501,
+      "fraction_approximately_zero": 0.42128463476070527
+    }
+  },
+  "comparison": {
+    "1": {
+      "state_count": 500,
+      "all_state_lowest_outage_agreement": {
+        "current": 0.99,
+        "scenario": 0.994
+      },
+      "non_tied_outage_state_count": 16,
+      "non_tied_lowest_outage_agreement": {
+        "current": 0.6875,
+        "scenario": 0.8125
+      },
+      "non_tied_outage_rank": {
+        "current_spearman": -0.01310738707659099,
+        "scenario_spearman": 0.6,
+        "current_kendall": -1.1895246692412391e-17,
+        "scenario_kendall": 0.6
+      },
+      "non_tied_deficit_state_count": 186,
+      "non_tied_lowest_deficit_agreement": {
+        "current": 0.45161290322580644,
+        "scenario": 0.521505376344086
+      },
+      "non_tied_deficit_rank": {
+        "current_spearman": 0.07165008477464911,
+        "scenario_spearman": 0.03265986323710905,
+        "current_kendall": 0.019422572178477693,
+        "scenario_kendall": 0.04
+      },
+      "strict_pairwise": {
+        "outage_pair_count": 41,
+        "current_outage_accuracy": 0.4634146341463415,
+        "scenario_outage_accuracy": 0.2682926829268293,
+        "deficit_pair_count": 522,
+        "current_deficit_accuracy": 0.3773946360153257,
+        "scenario_deficit_accuracy": 0.06704980842911877
+      },
+      "outage_regret": {
+        "current": {
+          "count": 500,
+          "mean": 0.01,
+          "median": 0.0,
+          "p90": 0.0
+        },
+        "scenario": {
+          "count": 500,
+          "mean": 0.006,
+          "median": 0.0,
+          "p90": 0.0
+        }
+      },
+      "deficit_regret": {
+        "current": {
+          "count": 500,
+          "mean": 0.001129537082272616,
+          "median": 0.0,
+          "p90": 0.0014628372634300324
+        },
+        "scenario": {
+          "count": 500,
+          "mean": 0.0005754375923869431,
+          "median": 0.0,
+          "p90": 0.0008389228919302905
+        }
+      }
+    },
+    "2": {
+      "state_count": 497,
+      "all_state_lowest_outage_agreement": {
+        "current": 0.9738430583501007,
+        "scenario": 0.9778672032193159
+      },
+      "non_tied_outage_state_count": 31,
+      "non_tied_lowest_outage_agreement": {
+        "current": 0.5806451612903226,
+        "scenario": 0.6451612903225806
+      },
+      "non_tied_outage_rank": {
+        "current_spearman": 0.08597491379307277,
+        "scenario_spearman": 0.6666666666666666,
+        "current_kendall": 0.1594202898550725,
+        "scenario_kendall": 0.6666666666666666
+      },
+      "non_tied_deficit_state_count": 302,
+      "non_tied_lowest_deficit_agreement": {
+        "current": 0.4337748344370861,
+        "scenario": 0.45695364238410596
+      },
+      "non_tied_deficit_rank": {
+        "current_spearman": -0.03826775151275065,
+        "scenario_spearman": 0.09294367926927924,
+        "current_kendall": -0.074487895716946,
+        "scenario_kendall": 0.07692307692307693
+      },
+      "strict_pairwise": {
+        "outage_pair_count": 77,
+        "current_outage_accuracy": 0.44155844155844154,
+        "scenario_outage_accuracy": 0.18181818181818182,
+        "deficit_pair_count": 893,
+        "current_deficit_accuracy": 0.2967525195968645,
+        "scenario_deficit_accuracy": 0.0425531914893617
+      },
+      "outage_regret": {
+        "current": {
+          "count": 497,
+          "mean": 0.028169014084507043,
+          "median": 0.0,
+          "p90": 0.0
+        },
+        "scenario": {
+          "count": 497,
+          "mean": 0.02414486921529175,
+          "median": 0.0,
+          "p90": 0.0
+        }
+      },
+      "deficit_regret": {
+        "current": {
+          "count": 497,
+          "mean": 0.0036723811152766595,
+          "median": 0.0,
+          "p90": 0.004083861307228399
+        },
+        "scenario": {
+          "count": 497,
+          "mean": 0.003291136271192897,
+          "median": 0.0,
+          "p90": 0.003969810404773405
+        }
+      }
+    },
+    "4": {
+      "state_count": 494,
+      "all_state_lowest_outage_agreement": {
+        "current": 0.8927125506072875,
+        "scenario": 0.9008097165991903
+      },
+      "non_tied_outage_state_count": 110,
+      "non_tied_lowest_outage_agreement": {
+        "current": 0.5181818181818182,
+        "scenario": 0.5545454545454546
+      },
+      "non_tied_outage_rank": {
+        "current_spearman": 0.086579487237734,
+        "scenario_spearman": 0.2390406150309878,
+        "current_kendall": 0.12043010752688174,
+        "scenario_kendall": 0.2274509803921569
+      },
+      "non_tied_deficit_state_count": 407,
+      "non_tied_lowest_deficit_agreement": {
+        "current": 0.4619164619164619,
+        "scenario": 0.4520884520884521
+      },
+      "non_tied_deficit_rank": {
+        "current_spearman": 0.06850869466252799,
+        "scenario_spearman": 0.05969739063962648,
+        "current_kendall": 0.05758998435054774,
+        "scenario_kendall": 0.04722222222222222
+      },
+      "strict_pairwise": {
+        "outage_pair_count": 285,
+        "current_outage_accuracy": 0.3508771929824561,
+        "scenario_outage_accuracy": 0.2,
+        "deficit_pair_count": 1395,
+        "current_deficit_accuracy": 0.3225806451612903,
+        "scenario_deficit_accuracy": 0.1082437275985663
+      },
+      "outage_regret": {
+        "current": {
+          "count": 494,
+          "mean": 0.13562753036437247,
+          "median": 0.0,
+          "p90": 1.0
+        },
+        "scenario": {
+          "count": 494,
+          "mean": 0.12955465587044535,
+          "median": 0.0,
+          "p90": 0.0
+        }
+      },
+      "deficit_regret": {
+        "current": {
+          "count": 494,
+          "mean": 0.018025223089697714,
+          "median": 0.0,
+          "p90": 0.0582293655527843
+        },
+        "scenario": {
+          "count": 494,
+          "mean": 0.018899529164619264,
+          "median": 0.0,
+          "p90": 0.06011232826581352
+        }
+      }
+    },
+    "6": {
+      "state_count": 492,
+      "all_state_lowest_outage_agreement": {
+        "current": 0.8536585365853658,
+        "scenario": 0.8516260162601627
+      },
+      "non_tied_outage_state_count": 154,
+      "non_tied_lowest_outage_agreement": {
+        "current": 0.5324675324675324,
+        "scenario": 0.525974025974026
+      },
+      "non_tied_outage_rank": {
+        "current_spearman": 0.004570691501577333,
+        "scenario_spearman": 0.03580406666601879,
+        "current_kendall": -0.0057471264367816065,
+        "scenario_kendall": 0.05215686274509805
+      },
+      "non_tied_deficit_state_count": 446,
+      "non_tied_lowest_deficit_agreement": {
+        "current": 0.42376681614349776,
+        "scenario": 0.4103139013452915
+      },
+      "non_tied_deficit_rank": {
+        "current_spearman": 0.011550781314158839,
+        "scenario_spearman": 0.03781715962278802,
+        "current_kendall": -0.008630952380952388,
+        "scenario_kendall": 0.024415204678362563
+      },
+      "strict_pairwise": {
+        "outage_pair_count": 428,
+        "current_outage_accuracy": 0.3130841121495327,
+        "scenario_outage_accuracy": 0.3107476635514019,
+        "deficit_pair_count": 1580,
+        "current_deficit_accuracy": 0.3018987341772152,
+        "scenario_deficit_accuracy": 0.30443037974683546
+      },
+      "outage_regret": {
+        "current": {
+          "count": 492,
+          "mean": 0.2967479674796748,
+          "median": 0.0,
+          "p90": 1.0
+        },
+        "scenario": {
+          "count": 492,
+          "mean": 0.31097560975609756,
+          "median": 0.0,
+          "p90": 1.0
+        }
+      },
+      "deficit_regret": {
+        "current": {
+          "count": 492,
+          "mean": 0.047201621956173154,
+          "median": 1.5808781518172302e-05,
+          "p90": 0.15818337556648454
+        },
+        "scenario": {
+          "count": 492,
+          "mean": 0.05056640054781009,
+          "median": 6.0503859082083764e-05,
+          "p90": 0.1624400421902365
+        }
+      }
+    }
+  },
+  "event_family_h6": {
+    "latent_degraded": {
+      "non_tied_state_count": 26,
+      "strict_pair_count": 71,
+      "current_mean_spearman": -0.07918987638861238,
+      "scenario_mean_spearman": 0.023864163069401284,
+      "current_strict_pair_accuracy": 0.36619718309859156,
+      "scenario_strict_pair_accuracy": 0.4084507042253521
+    },
+    "recovering": {
+      "non_tied_state_count": 5,
+      "strict_pair_count": 11,
+      "current_mean_spearman": -0.6360827634879543,
+      "scenario_mean_spearman": -0.797137179352752,
+      "current_strict_pair_accuracy": 0.09090909090909091,
+      "scenario_strict_pair_accuracy": 0.09090909090909091
+    },
+    "random_blockage": {
+      "non_tied_state_count": 20,
+      "strict_pair_count": 61,
+      "current_mean_spearman": -0.16806874135681835,
+      "scenario_mean_spearman": -0.17238167499072027,
+      "current_strict_pair_accuracy": 0.3114754098360656,
+      "scenario_strict_pair_accuracy": 0.29508196721311475
+    },
+    "capacity_drop": {
+      "non_tied_state_count": 10,
+      "strict_pair_count": 24,
+      "current_mean_spearman": 0.40360617022596396,
+      "scenario_mean_spearman": 0.22222222222222224,
+      "current_strict_pair_accuracy": 0.2916666666666667,
+      "scenario_strict_pair_accuracy": 0.16666666666666666
+    },
+    "traffic_burst": {
+      "non_tied_state_count": 12,
+      "strict_pair_count": 33,
+      "current_mean_spearman": 0.4235036609772788,
+      "scenario_mean_spearman": 0.3449050769871894,
+      "current_strict_pair_accuracy": 0.45454545454545453,
+      "scenario_strict_pair_accuracy": 0.36363636363636365
+    },
+    "switching_transition": {
+      "non_tied_state_count": 0,
+      "strict_pair_count": 0,
+      "current_mean_spearman": null,
+      "scenario_mean_spearman": null,
+      "current_strict_pair_accuracy": 0.0,
+      "scenario_strict_pair_accuracy": 0.0
+    }
+  },
+  "scenario_information_audit": {
+    "uses_current_observed_sinr": true,
+    "uses_current_observed_load": true,
+    "uses_ephemeris_and_protocol_state": true,
+    "uses_configured_event_distributions": true,
+    "uses_configured_latent_transition_distribution": true,
+    "uses_true_current_latent_state": false,
+    "uses_actual_future_events": false,
+    "copies_environment_future_rng_state": false,
+    "actual_event_flags_used_only_for_posthoc_evaluation": true
+  },
+  "counterfactual_randomness_limitation": "Legal-action branches start from identical environment and actor RNG states, with other UEs' first actions fixed. Action-dependent environment RNG consumption can desynchronize later exogenous draws."
+}

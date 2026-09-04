@@ -164,9 +164,12 @@ class _HypotheticalState:
 class LookaheadReasoner:
     """State-free ephemeris lookahead over protocol-aware mobility plans.
 
-    V3 ranks plans by service continuity, adding prices in M4 and reliability
-    risk in M5. Legacy V2 additionally ranks analytical control-cost proxies.
-    Future randomized event labels are deliberately excluded.
+    V3 ranks plans by service continuity in M3 and adds marginal resource prices
+    in M4/M5. M5 reliability is enforced separately by the realized-outage dual
+    reward and actor mu conditioning; analytical reliability risk is diagnostic
+    only. Legacy V2 additionally ranks analytical control-cost proxies and keeps
+    its historical constraint-risk behavior. Future randomized event labels are
+    deliberately excluded.
     """
 
     def __init__(
@@ -757,11 +760,13 @@ class LookaheadReasoner:
                 if env.v3_enabled
                 else service_step_cost + self.lambda_resource * control_cost
             )
-            # The omitted -mu*outage_target term is identical for every
-            # hypothetical plan and therefore cannot change action ranking.
+            # V3 M5 deliberately keeps analytical reliability risk diagnostic-only.
+            # Reliability enters production decisions through realized-outage
+            # constrained rewards, recurrent outcomes, and the actor's normalized
+            # mu input. Preserve the historical analytical term for V2 compatibility.
             reliability_step_cost = (
                 outage_dual_mu * planning_reliability_risk
-                if self.use_constraint
+                if self.use_constraint and not env.v3_enabled
                 else 0.0
             )
             applied_coordination_cost = (

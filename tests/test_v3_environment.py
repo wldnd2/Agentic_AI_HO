@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 
 from leo_mappo import LEOMobilityEnv, MAPPO, load_config
+from leo_mappo.coordinator import ReliabilityDualController, compute_training_reward
 from leo_mappo.reasoning import (
     LookaheadReasoner,
     _duplicated_stream_rates,
@@ -540,25 +541,37 @@ class V3EnvironmentTest(unittest.TestCase):
             result.coordination_costs[ue_id, env.prepare_start + 1],
         )
 
-    def test_v3_m5_reliability_component_is_independent_of_coordination(self) -> None:
+    def test_v3_m4_and_m5_reasoner_rankings_are_identical(self) -> None:
         env, _ = make_reasoning_case()
-        prices = np.zeros(env.num_cells)
-        service_reliability = LookaheadReasoner(
+        prices = np.linspace(0.1, 0.6, env.num_cells)
+        m4 = LookaheadReasoner(
             env.config["reasoning"],
             env.reward_cfg,
             env.config.get("coordination", {}),
-            use_constraint=True,
-        ).analyze(env, prices=prices, outage_dual_mu=2.0)
-        coordinated_reliability = LookaheadReasoner(
+            use_coordination=True,
+        ).analyze(env, prices=prices)
+        m5 = LookaheadReasoner(
             env.config["reasoning"],
             env.reward_cfg,
             env.config.get("coordination", {}),
             use_coordination=True,
             use_constraint=True,
-        ).analyze(env, prices=prices, outage_dual_mu=2.0)
+        ).analyze(env, prices=prices, outage_dual_mu=1.0)
+        feasible = env.action_masks() > 0.0
+        np.testing.assert_allclose(
+            m5.total_costs[feasible], m4.total_costs[feasible], atol=1e-12
+        )
+        np.testing.assert_allclose(
+            m5.raw_costs[feasible], m4.raw_costs[feasible], atol=1e-12
+        )
+        np.testing.assert_allclose(
+            m5.features[feasible], m4.features[feasible], atol=1e-12
+        )
         np.testing.assert_array_equal(
-            service_reliability.reliability_costs,
-            coordinated_reliability.reliability_costs,
+            np.argsort(m5.raw_costs, axis=1), np.argsort(m4.raw_costs, axis=1)
+        )
+        np.testing.assert_array_equal(
+            m5.reliability_costs[feasible], np.zeros(np.count_nonzero(feasible))
         )
 
     def test_v2_absolute_coordination_semantics_are_unchanged(self) -> None:
@@ -580,7 +593,7 @@ class V3EnvironmentTest(unittest.TestCase):
             result.coordination_costs[ue_id, env.release_action],
         )
 
-    def test_v3_m5_reliability_cost_is_additive(self) -> None:
+    def test_v3_m5_reasoner_ranking_is_mu_invariant(self) -> None:
         env, _ = make_reasoning_case()
         reasoner = LookaheadReasoner(
             env.config["reasoning"],
@@ -590,19 +603,159 @@ class V3EnvironmentTest(unittest.TestCase):
             use_constraint=True,
         )
         prices = np.full(env.num_cells, 0.5, dtype=np.float64)
+        results = [
+            reasoner.analyze(env, prices=prices, outage_dual_mu=mu)
+            for mu in (0.0, 0.1, 1.0)
+        ]
+        feasible = env.action_masks() > 0.0
+        for result in results:
+            np.testing.assert_allclose(
+                result.total_costs[feasible],
+                result.service_costs[feasible] + result.coordination_costs[feasible],
+                atol=1e-12,
+            )
+            np.testing.assert_array_equal(
+                result.reliability_costs[feasible],
+                np.zeros(np.count_nonzero(feasible)),
+            )
+        for result in results[1:]:
+            np.testing.assert_array_equal(result.total_costs, results[0].total_costs)
+            np.testing.assert_array_equal(result.raw_costs, results[0].raw_costs)
+            np.testing.assert_array_equal(result.features, results[0].features)
+            np.testing.assert_array_equal(
+                np.argsort(result.raw_costs, axis=1),
+                np.argsort(results[0].raw_costs, axis=1),
+            )
+
+    def test_v3_m5_analytical_risk_does_not_leak_into_actor_reasoning_feature(self) -> None:
+        env, _ = make_reasoning_case()
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+            use_constraint=True,
+        )
+        prices = np.linspace(0.1, 0.6, env.num_cells)
+        with patch("leo_mappo.reasoning._planning_reliability_risk", return_value=0.0):
+            zero_risk = reasoner.analyze(env, prices=prices, outage_dual_mu=1.0)
+        with patch("leo_mappo.reasoning._planning_reliability_risk", return_value=1.0):
+            unit_risk = reasoner.analyze(env, prices=prices, outage_dual_mu=1.0)
+        np.testing.assert_array_equal(zero_risk.features, unit_risk.features)
+        np.testing.assert_array_equal(zero_risk.raw_costs, unit_risk.raw_costs)
+        np.testing.assert_array_equal(zero_risk.total_costs, unit_risk.total_costs)
+        self.assertFalse(
+            np.array_equal(
+                zero_risk.planning_reliability_risks,
+                unit_risk.planning_reliability_risks,
+            )
+        )
+
+    def test_v3_m5_actor_still_receives_normalized_mu(self) -> None:
+        config = load_config(
+            ROOT / "configs/default.yaml",
+            [
+                ROOT / "configs/validation_agentic_challenge_v3.yaml",
+                ROOT / "configs/full_agentic.yaml",
+            ],
+        )
+        env = LEOMobilityEnv(config)
+        observations, _, masks = env.reset(seed=909)
+        agent = MAPPO(
+            env.obs_dim,
+            env.global_state_dim,
+            env.action_dim,
+            config["mappo"],
+            seed=17,
+            num_satellites=env.num_cells,
+            candidate_count=env.candidate_count,
+        )
+        captured_inputs: list[np.ndarray] = []
+        original_forward = agent.actor.forward
+
+        def capture_forward(values: np.ndarray):
+            captured_inputs.append(values.copy())
+            return original_forward(values)
+
+        common = (
+            observations,
+            masks,
+            np.full(env.num_agents, -1, dtype=np.int64),
+            np.zeros((env.num_agents, agent.outcome_dim)),
+            np.zeros((env.num_agents, agent.recurrent_hidden_dim)),
+            np.zeros((env.num_agents, env.action_dim)),
+            np.zeros((env.num_agents, agent.price_feature_dim)),
+        )
+        with patch.object(agent.actor, "forward", side_effect=capture_forward):
+            agent.act_recurrent(*common, normalized_mu=0.0, deterministic=True)
+            agent.act_recurrent(*common, normalized_mu=0.25, deterministic=True)
+        np.testing.assert_array_equal(captured_inputs[0][:, -1], 0.0)
+        np.testing.assert_array_equal(captured_inputs[1][:, -1], 0.25)
+        np.testing.assert_array_equal(
+            captured_inputs[0][:, :-1], captured_inputs[1][:, :-1]
+        )
+
+    def test_m5_constrained_reward_and_dual_update_remain_mu_dependent(self) -> None:
+        base, base_penalty = compute_training_reward(
+            0.2, 0.1, 0.4, 0.25, True, 0.0, 0.1
+        )
+        constrained, constrained_penalty = compute_training_reward(
+            0.2, 0.1, 0.4, 0.25, True, 0.5, 0.1
+        )
+        self.assertEqual(base_penalty, 0.0)
+        self.assertGreater(constrained_penalty, 0.0)
+        self.assertLess(constrained, base)
+
+        controller = ReliabilityDualController(
+            {
+                "outage_target": 0.1,
+                "dual_learning_rate": 0.005,
+                "mu_initial": 0.5,
+                "mu_max": 1.0,
+            }
+        )
+        increased = controller.update(outage_count=2.0, active_count=10.0)
+        decreased = controller.update(outage_count=0.0, active_count=10.0)
+        self.assertGreater(increased, 0.5)
+        self.assertLess(decreased, increased)
+        lower = ReliabilityDualController(
+            {
+                "outage_target": 0.1,
+                "dual_learning_rate": 1.0,
+                "mu_initial": 0.0,
+                "mu_max": 1.0,
+            }
+        )
+        upper = ReliabilityDualController(
+            {
+                "outage_target": 0.1,
+                "dual_learning_rate": 1.0,
+                "mu_initial": 1.0,
+                "mu_max": 1.0,
+            }
+        )
+        self.assertEqual(lower.update(0.0, 10.0), 0.0)
+        self.assertEqual(upper.update(10.0, 10.0), 1.0)
+
+    def test_v2_constrained_reasoner_keeps_legacy_reliability_term(self) -> None:
+        env, _ = make_reasoning_case(v3=False)
+        reasoner = LookaheadReasoner(
+            env.config["reasoning"],
+            env.reward_cfg,
+            env.config.get("coordination", {}),
+            use_coordination=True,
+            use_constraint=True,
+        )
+        prices = np.zeros(env.num_cells)
         without_mu = reasoner.analyze(env, prices=prices, outage_dual_mu=0.0)
-        with_mu = reasoner.analyze(env, prices=prices, outage_dual_mu=2.0)
+        with_mu = reasoner.analyze(env, prices=prices, outage_dual_mu=1.0)
         feasible = env.action_masks() > 0.0
         self.assertGreater(float(with_mu.reliability_costs[feasible].max()), 0.0)
-        np.testing.assert_allclose(
-            with_mu.total_costs[feasible],
-            with_mu.service_costs[feasible]
-            + with_mu.coordination_costs[feasible]
-            + with_mu.reliability_costs[feasible],
-            atol=1e-12,
-        )
         self.assertTrue(
-            np.any(with_mu.total_costs[feasible] != without_mu.total_costs[feasible])
+            np.any(
+                with_mu.total_costs[feasible]
+                != without_mu.total_costs[feasible]
+            )
         )
 
     def test_v2_reasoner_required_rate_interface_preserves_true_behavior(self) -> None:
