@@ -19,8 +19,8 @@ OVERRIDES = [
 WEIGHTS = (
     ROOT
     / "outputs"
-    / "v3_validation_420"
-    / "m5_dual_only"
+    / "v3_final_1500"
+    / "m5_dual_only_seed7"
     / "mappo_weights.npz"
 )
 
@@ -31,9 +31,10 @@ EPISODES = 200
 
 MU_VALUES = [
     0.0,
-    0.05,
     0.10,
-    0.143616536456068,
+    0.20,
+    0.2987434895766808,
+    0.35,
 ]
 
 
