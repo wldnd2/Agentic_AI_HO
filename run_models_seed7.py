@@ -106,8 +106,29 @@ def print_convergence(csv_path: Path):
     print()
     print("========== CONVERGENCE SUMMARY ==========")
 
+    if not rows:
+        print("No training metrics available.")
+        print("=========================================")
+        print()
+        return
+
+    if "team_reward" in rows[0]:
+        for window in (100, 200, 500):
+            value = mean(rows[-window:], "team_reward") if len(rows) >= window else None
+            rendered = f"{value:.6f}" if value is not None else "n/a"
+            print(f"last_{window}_reward_mean={rendered}")
+        slope = (
+            slope_per_100(rows[-500:], "team_reward")
+            if len(rows) >= 500
+            else None
+        )
+        rendered_slope = f"{slope:.6f}" if slope is not None else "n/a"
+        print(f"reward_slope_per_100_last_500={rendered_slope}")
+
     if len(rows) < 420:
         print("Not enough iterations for 210-vs-210 comparison.")
+        print("=========================================")
+        print()
         return
 
     prev210 = rows[-420:-210]

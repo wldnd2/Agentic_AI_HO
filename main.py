@@ -5,10 +5,27 @@ import csv
 import json
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from leo_mappo import LEOMobilityEnv, MAPPO, load_config
 from leo_mappo.runner import RolloutRunner, evaluate_policy
+
+
+def _rolling_mean(values: list[float], window: int = 50) -> list[float]:
+    """Return a trailing mean with min_periods=1 semantics."""
+    if window <= 0:
+        raise ValueError("rolling-mean window must be positive")
+    result: list[float] = []
+    running_sum = 0.0
+    for index, value in enumerate(values):
+        running_sum += float(value)
+        if index >= window:
+            running_sum -= float(values[index - window])
+        result.append(running_sum / min(index + 1, window))
+    return result
 
 
 def train(args: argparse.Namespace) -> None:
@@ -33,11 +50,22 @@ def train(args: argparse.Namespace) -> None:
     runner = RolloutRunner(env, agent)
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_interval = int(config["mappo"].get("checkpoint_interval", 100))
+    if checkpoint_interval <= 0:
+        raise ValueError("mappo.checkpoint_interval must be positive")
+    total_iterations = int(config["mappo"]["training_iterations"])
     history = []
-    for iteration in range(int(config["mappo"]["training_iterations"])):
+    for iteration in range(total_iterations):
+        actor_lr, critic_lr = agent.set_training_iteration(iteration, total_iterations)
         batch, rollout_metrics = runner.collect(int(config["mappo"]["rollout_steps"]))
         losses = agent.update(batch)
-        row = {"iteration": iteration + 1, **rollout_metrics, **losses}
+        row = {
+            "iteration": iteration + 1,
+            **rollout_metrics,
+            **losses,
+            "actor_lr": actor_lr,
+            "critic_lr": critic_lr,
+        }
         history.append(row)
         runner.update_constraint()
         print(
@@ -46,7 +74,28 @@ def train(args: argparse.Namespace) -> None:
             f"dup_cost={rollout_metrics.get('duplication_train_cost', 0.0):6.3f} "
             f"actor_loss={losses['actor_loss']:7.4f}"
         )
-    agent.save(output_dir / "mappo_weights.npz")
+        completed_iteration = iteration + 1
+        if completed_iteration % checkpoint_interval == 0:
+            checkpoint_dir = output_dir / "checkpoints"
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint_path = (
+                checkpoint_dir / f"mappo_weights_iter_{completed_iteration:04d}.npz"
+            )
+            agent.save(checkpoint_path)
+            smoothed_reward = _rolling_mean(
+                [float(item.get("team_reward", 0.0)) for item in history], 50
+            )[-1]
+            print(
+                f"checkpoint={checkpoint_path} "
+                f"smoothed_reward={smoothed_reward:.6f} "
+                f"outage_ratio={rollout_metrics.get('outage_ratio', 0.0):.6f}"
+            )
+    final_checkpoint = output_dir / "mappo_weights_final.npz"
+    agent.save(final_checkpoint)
+    print(f"checkpoint={final_checkpoint} final=true")
+    legacy_checkpoint = output_dir / "mappo_weights.npz"
+    agent.save(legacy_checkpoint)
+    print(f"checkpoint={legacy_checkpoint} final=true legacy=true")
     fieldnames = sorted({key for row in history for key in row})
     with (output_dir / "training_metrics.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -93,8 +142,17 @@ def _save_training_plots(history: list[dict[str, float]], output_dir: Path) -> N
         def series(name: str) -> list[float]:
             return [float(row.get(name, 0.0)) for row in history]
 
+        reward = series("team_reward")
+        reward_window = 50
+        smoothed_reward = _rolling_mean(reward, reward_window)
         fig, axis = plt.subplots()
-        axis.plot(x, series("team_reward"), label="team_reward")
+        axis.plot(x, reward, alpha=0.25, linewidth=1.0, label="raw reward")
+        axis.plot(
+            x,
+            smoothed_reward,
+            linewidth=2.5,
+            label=f"smoothed reward (window={reward_window})",
+        )
         axis.set(xlabel="iteration", ylabel="reward")
         axis.legend()
         fig.tight_layout(); fig.savefig(output_dir / "reward.png"); plt.close(fig)

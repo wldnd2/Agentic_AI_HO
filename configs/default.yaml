@@ -70,6 +70,12 @@ mappo:
   clip_ratio: 0.2
   actor_lr: 0.0003
   critic_lr: 0.001
+  lr_anneal:
+    enabled: true
+    schedule: linear
+    # Optional: actor_initial_lr, critic_initial_lr, actor_final_lr, critic_final_lr.
+    # Defaults: existing LR values initially, then 10% of each at the final iteration.
+  checkpoint_interval: 100
   entropy_coef: 0.01
   value_coef: 0.5
   max_grad_norm: 0.5

@@ -88,6 +88,39 @@ class MAPPO:
         hidden = int(config.get("hidden_dim", 64))
         actor_hidden = config.get("actor_hidden_dims", [hidden])
         critic_hidden = config.get("critic_hidden_dims", [hidden])
+        actor_lr = float(config["actor_lr"])
+        critic_lr = float(config["critic_lr"])
+        lr_anneal = config.get("lr_anneal", {})
+        if not isinstance(lr_anneal, dict):
+            raise ValueError("mappo.lr_anneal must be a mapping")
+        self.lr_anneal_enabled = bool(lr_anneal.get("enabled", False))
+        self.lr_anneal_schedule = str(lr_anneal.get("schedule", "linear"))
+        self.actor_initial_lr = (
+            float(lr_anneal.get("actor_initial_lr", actor_lr))
+            if self.lr_anneal_enabled
+            else actor_lr
+        )
+        self.critic_initial_lr = (
+            float(lr_anneal.get("critic_initial_lr", critic_lr))
+            if self.lr_anneal_enabled
+            else critic_lr
+        )
+        self.actor_final_lr = float(
+            lr_anneal.get("actor_final_lr", 0.1 * self.actor_initial_lr)
+        )
+        self.critic_final_lr = float(
+            lr_anneal.get("critic_final_lr", 0.1 * self.critic_initial_lr)
+        )
+        if self.lr_anneal_enabled and self.lr_anneal_schedule != "linear":
+            raise ValueError("only linear mappo learning-rate annealing is supported")
+        learning_rates = (
+            self.actor_initial_lr,
+            self.critic_initial_lr,
+            self.actor_final_lr,
+            self.critic_final_lr,
+        )
+        if not all(np.isfinite(value) and value >= 0.0 for value in learning_rates):
+            raise ValueError("MAPPO learning rates must be finite and non-negative")
         actor_input_dim = obs_dim
         if self.use_memory:
             self.gru = GRU(obs_dim + action_dim + self.outcome_dim, self.recurrent_hidden_dim, self.rng)
@@ -101,11 +134,38 @@ class MAPPO:
             self.gru = None
         self.actor = MLP(actor_input_dim, actor_hidden, action_dim, self.rng)
         self.critic = MLP(self.global_state_dim, critic_hidden, 1, self.rng)
-        self.actor_optimizer = Adam(self.actor.parameters, float(config["actor_lr"]))
+        self.actor_optimizer = Adam(self.actor.parameters, self.actor_initial_lr)
         self.gru_optimizer = (
-            Adam(self.gru.parameters, float(config["actor_lr"])) if self.gru is not None else None
+            Adam(self.gru.parameters, self.actor_initial_lr) if self.gru is not None else None
         )
-        self.critic_optimizer = Adam(self.critic.parameters, float(config["critic_lr"]))
+        self.critic_optimizer = Adam(self.critic.parameters, self.critic_initial_lr)
+
+    def set_training_iteration(
+        self, iteration: int, total_iterations: int
+    ) -> tuple[float, float]:
+        """Set optimizer rates for a zero-based training iteration."""
+        if total_iterations <= 0 or not 0 <= iteration < total_iterations:
+            raise ValueError("training iteration must be within total_iterations")
+        if self.lr_anneal_enabled:
+            progress = iteration / max(total_iterations - 1, 1)
+            actor_lr = self.actor_initial_lr + progress * (
+                self.actor_final_lr - self.actor_initial_lr
+            )
+            critic_lr = self.critic_initial_lr + progress * (
+                self.critic_final_lr - self.critic_initial_lr
+            )
+            self.actor_optimizer.learning_rate = float(actor_lr)
+            self.critic_optimizer.learning_rate = float(critic_lr)
+            if self.gru_optimizer is not None:
+                self.gru_optimizer.learning_rate = float(actor_lr)
+        return self.learning_rates
+
+    @property
+    def learning_rates(self) -> tuple[float, float]:
+        return (
+            float(self.actor_optimizer.learning_rate),
+            float(self.critic_optimizer.learning_rate),
+        )
 
     def policy(self, observations: np.ndarray, masks: np.ndarray) -> np.ndarray:
         logits, _ = self.actor.forward(observations)
