@@ -71,7 +71,7 @@ mappo:
   actor_lr: 0.0003
   critic_lr: 0.001
   lr_anneal:
-    enabled: true
+    enabled: false
     schedule: linear
     # Optional: actor_initial_lr, critic_initial_lr, actor_final_lr, critic_final_lr.
     # Defaults: existing LR values initially, then 10% of each at the final iteration.
