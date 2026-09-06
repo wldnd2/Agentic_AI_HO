@@ -1,0 +1,8 @@
+mappo:
+  lr_anneal:
+    enabled: true
+    schedule: linear
+    actor_initial_lr: 0.0003
+    critic_initial_lr: 0.001
+    actor_final_lr: 0.00003
+    critic_final_lr: 0.0001
