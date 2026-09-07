@@ -1,0 +1,72 @@
+
+============================================================================
+M3 NORMAL REASONING - 200 STOCHASTIC
+============================================================================
+outage_ratio=0.11636706349206234
+service_deficit=0.059071715537435024
+service_ratio_mean=0.9373774157692392
+resource_cost=0.006981152273558663
+dro=0.0037635960249902275
+handover_started=0.35775
+handover_failure_rate=0.04891684136965528
+pingpong_rate=0.06950309684682239
+deadline_violation_rate=0.025857814895351668
+preparation_rejection_rate=0.3139112553245365
+prepare_to_release_without_commit_rate=0.8423380465351231
+prepare_to_commit_rate=0.14621792314204093
+duplication_active_time_fraction=0.004294642857142725
+duplication_activation_rate=0.0036577380952380893
+action_stay_fraction=0.4953462301587305
+action_prepare_fraction=0.29717857142856996
+action_dup_on_fraction=0.0036577380952380893
+action_commit_fraction=0.02981250000000076
+action_release_fraction=0.17179761904762295
+hidden_state_norm=0.5811173018200992
+reasoning_score_gap=0.006887076834775772
+reasoning_planning_risk_action_spread=0.011952829298619539
+reasoning_planning_risk_discriminating_fraction=0.4404275793650811
+team_reward=-0.06081700360582552
+
+============================================================================
+M3 ZERO REASONING FEATURES - 200 STOCHASTIC
+============================================================================
+outage_ratio=0.11576785714285599
+service_deficit=0.059132162695658616
+service_ratio_mean=0.9373114447568638
+resource_cost=0.009179952697993156
+dro=0.006143688080161057
+handover_started=0.3579404761904762
+handover_failure_rate=0.05101939002891841
+pingpong_rate=0.06549526391772052
+deadline_violation_rate=0.0261321467733663
+preparation_rejection_rate=0.31116289279501846
+prepare_to_release_without_commit_rate=0.8375879396984514
+prepare_to_commit_rate=0.14740531927931622
+duplication_active_time_fraction=0.006872023809523636
+duplication_activation_rate=0.005848214285713835
+action_stay_fraction=0.49774900793650767
+action_prepare_fraction=0.29376488095237924
+action_dup_on_fraction=0.005848214285713835
+action_commit_fraction=0.02982837301587351
+action_release_fraction=0.16953571428571795
+hidden_state_norm=0.5814416124464535
+reasoning_score_gap=0.006809813886539744
+reasoning_planning_risk_action_spread=0.012259502181892163
+reasoning_planning_risk_discriminating_fraction=0.4450505952380951
+team_reward=-0.06142715087015681
+
+============================================================================
+REASONING EFFECT
+============================================================================
+outage_ratio: normal=0.116367063 | zero=0.115767857 | zero-normal=-0.000599206
+service_deficit: normal=0.059071716 | zero=0.059132163 | zero-normal=+0.000060447
+resource_cost: normal=0.006981152 | zero=0.009179953 | zero-normal=+0.002198800
+dro: normal=0.003763596 | zero=0.006143688 | zero-normal=+0.002380092
+handover_started: normal=0.357750000 | zero=0.357940476 | zero-normal=+0.000190476
+pingpong_rate: normal=0.069503097 | zero=0.065495264 | zero-normal=-0.004007833
+deadline_violation_rate: normal=0.025857815 | zero=0.026132147 | zero-normal=+0.000274332
+preparation_rejection_rate: normal=0.313911255 | zero=0.311162893 | zero-normal=-0.002748363
+prepare_to_release_without_commit_rate: normal=0.842338047 | zero=0.837587940 | zero-normal=-0.004750107
+prepare_to_commit_rate: normal=0.146217923 | zero=0.147405319 | zero-normal=+0.001187396
+duplication_active_time_fraction: normal=0.004294643 | zero=0.006872024 | zero-normal=+0.002577381
+team_reward: normal=-0.060817004 | zero=-0.061427151 | zero-normal=-0.000610147

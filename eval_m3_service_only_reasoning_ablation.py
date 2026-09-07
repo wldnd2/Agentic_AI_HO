@@ -22,8 +22,8 @@ OVERRIDES = [
 WEIGHTS = (
     ROOT
     / "outputs"
-    / "v3_validation_420"
-    / "m3_service_only"
+    / "v3_convergence_anneal_2000"
+    / "m3_seed7"
     / "mappo_weights.npz"
 )
 
