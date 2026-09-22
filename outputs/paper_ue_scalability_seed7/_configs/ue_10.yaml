@@ -1,0 +1,5 @@
+environment:
+  num_ues: 10
+
+mappo:
+  checkpoint_interval: 500
