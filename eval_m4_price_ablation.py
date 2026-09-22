@@ -1,3 +1,4 @@
+import argparse
 from copy import deepcopy
 from pathlib import Path
 
@@ -19,8 +20,8 @@ OVERRIDES = [
 WEIGHTS = (
     ROOT
     / "outputs"
-    / "v3_validation_420"
-    / "m4"
+    / "v3_convergence_anneal_2000"
+    / "m4_seed7"
     / "mappo_weights.npz"
 )
 
@@ -48,10 +49,26 @@ def make_config(zero_price=False):
     return cfg
 
 
-def evaluate(zero_price=False):
+def evaluate(zero_price=False, weights=WEIGHTS):
     cfg = make_config(zero_price)
 
     env = LEOMobilityEnv(cfg)
+    label = "ZERO PRICE" if zero_price else "NORMAL"
+    original_reset = env.reset
+    started_episodes = 0
+
+    def reset_with_progress(*args, **kwargs):
+        nonlocal started_episodes
+        if started_episodes % 10 == 0:
+            print(
+                f"[{label}] {started_episodes}/{EPISODES} episodes complete",
+                flush=True,
+            )
+        observations = original_reset(*args, **kwargs)
+        started_episodes += 1
+        return observations
+
+    env.reset = reset_with_progress
 
     agent = MAPPO(
         env.obs_dim,
@@ -66,20 +83,22 @@ def evaluate(zero_price=False):
         ),
     )
 
-    agent.load(str(WEIGHTS))
+    agent.load(str(weights))
 
     if not agent.use_coordination:
         raise RuntimeError(
             "Loaded checkpoint is not an M4 coordination policy."
         )
 
-    return evaluate_policy(
+    result = evaluate_policy(
         env,
         agent,
         episodes=EPISODES,
         deterministic=False,
         evaluation_action_seed=ACTION_SEED,
     )
+    print(f"[{label}] {EPISODES}/{EPISODES} episodes complete", flush=True)
+    return result
 
 
 def print_result(title, result):
@@ -121,46 +140,60 @@ def print_result(title, result):
             print(f"{key}={result[key]}")
 
 
-normal = evaluate(zero_price=False)
-zero = evaluate(zero_price=True)
-
-print_result(
-    "M4 NORMAL COORDINATION - 200 STOCHASTIC",
-    normal,
-)
-
-print_result(
-    "M4 ZERO PRICE - 200 STOCHASTIC",
-    zero,
-)
-
-print()
-print("=" * 78)
-print("COORDINATION EFFECT")
-print("=" * 78)
-
-keys = [
-    "outage_ratio",
-    "service_deficit",
-    "resource_cost",
-    "dro",
-    "handover_started",
-    "pingpong_rate",
-    "deadline_violation_rate",
-    "preparation_rejection_rate",
-    "prepare_to_release_without_commit_rate",
-    "prepare_to_commit_rate",
-    "duplication_active_time_fraction",
-    "team_reward",
-]
-
-for key in keys:
-    normal_value = float(normal[key])
-    zero_value = float(zero[key])
-
-    print(
-        f"{key}: "
-        f"normal={normal_value:.9f} | "
-        f"zero={zero_value:.9f} | "
-        f"zero-normal={zero_value-normal_value:+.9f}"
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--weights",
+        type=Path,
+        default=WEIGHTS,
+        help="M4 checkpoint path (default: %(default)s)",
     )
+    args = parser.parse_args()
+
+    normal = evaluate(zero_price=False, weights=args.weights)
+    zero = evaluate(zero_price=True, weights=args.weights)
+
+    print_result(
+        "M4 NORMAL COORDINATION - 200 STOCHASTIC",
+        normal,
+    )
+
+    print_result(
+        "M4 ZERO PRICE - 200 STOCHASTIC",
+        zero,
+    )
+
+    print()
+    print("=" * 78)
+    print("COORDINATION EFFECT")
+    print("=" * 78)
+
+    keys = [
+        "outage_ratio",
+        "service_deficit",
+        "resource_cost",
+        "dro",
+        "handover_started",
+        "pingpong_rate",
+        "deadline_violation_rate",
+        "preparation_rejection_rate",
+        "prepare_to_release_without_commit_rate",
+        "prepare_to_commit_rate",
+        "duplication_active_time_fraction",
+        "team_reward",
+    ]
+
+    for key in keys:
+        normal_value = float(normal[key])
+        zero_value = float(zero[key])
+
+        print(
+            f"{key}: "
+            f"normal={normal_value:.9f} | "
+            f"zero={zero_value:.9f} | "
+            f"zero-normal={zero_value-normal_value:+.9f}"
+        )
+
+
+if __name__ == "__main__":
+    main()
