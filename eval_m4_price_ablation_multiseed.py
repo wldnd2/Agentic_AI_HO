@@ -1,18 +1,28 @@
-"""Paired, evaluation-only M4 price ablation across five seeds."""
+"""Paired, evaluation-only M4 price ablation under compound stress."""
 
 import csv
 import math
 import os
 from statistics import mean, stdev
 
-from leo_mappo import LEOMobilityEnv, MAPPO
+from leo_mappo import LEOMobilityEnv, MAPPO, load_config
 from leo_mappo.runner import evaluate_policy
 
-from eval_m4_price_ablation import AGENT_SEED, EPISODES, ROOT, WEIGHTS, make_config
+from eval_m4_price_ablation import (
+    AGENT_SEED,
+    BASE_CONFIG,
+    EPISODES,
+    OVERRIDES,
+    ROOT,
+    WEIGHTS,
+)
 
 
 EVALUATION_SEEDS = (7, 8, 9, 10, 11)
-RAW_CSV = ROOT / "outputs" / "m4_price_ablation_multiseed_raw.csv"
+COMPOUND_OVERRIDE = ROOT / "configs" / "compound_eval.yaml"
+CONFIG_OVERRIDES = (*OVERRIDES, COMPOUND_OVERRIDE)
+RAW_CSV = ROOT / "outputs" / "m4_price_ablation_compound_multiseed_raw.csv"
+SUMMARY_CSV = ROOT / "outputs" / "m4_price_ablation_compound_multiseed_summary.csv"
 T_95_DF4 = 2.7764451051977987
 REQUIRED_METRICS = (
     "outage_ratio",
@@ -20,9 +30,15 @@ REQUIRED_METRICS = (
     "resource_cost",
     "dro",
     "handover_started",
+    "handover_failure_rate",
     "pingpong_rate",
     "duplication_active_time_fraction",
+    "prepare_to_commit_rate",
+    "prepare_to_release_without_commit_rate",
     "team_reward",
+    "resource_price_mean",
+    "reasoning_coordination_cost",
+    "reasoning_score_gap",
 )
 CSV_METADATA = (
     "evaluation_seed",
@@ -32,6 +48,27 @@ CSV_METADATA = (
     "episodes",
     "checkpoint",
 )
+SUMMARY_FIELDS = (
+    "metric",
+    "condition",
+    "n",
+    "mean",
+    "std",
+    "ci95_low",
+    "ci95_high",
+)
+
+
+def make_config(zero_price: bool) -> dict:
+    cfg = load_config(
+        str(BASE_CONFIG),
+        [str(path) for path in CONFIG_OVERRIDES],
+    )
+    cfg["agent_seed"] = AGENT_SEED
+    if zero_price:
+        cfg["coordination"]["price_learning_rate"] = 0.0
+        cfg["coordination"]["initial_price"] = 0.0
+    return cfg
 
 
 def evaluate_seed(evaluation_seed: int, zero_price: bool) -> dict[str, float]:
@@ -89,10 +126,58 @@ def evaluate_seed(evaluation_seed: int, zero_price: bool) -> dict[str, float]:
 
 
 def summary(values: list[float]) -> tuple[float, float, float, float]:
+    if len(values) != len(EVALUATION_SEEDS):
+        raise ValueError("95% CI requires all five configured evaluation seeds")
     average = mean(values)
     standard_deviation = stdev(values)
     margin = T_95_DF4 * standard_deviation / math.sqrt(len(values))
     return average, standard_deviation, average - margin, average + margin
+
+
+def save_and_print_summary(
+    results: dict[tuple[int, str], dict[str, float]], metric_keys: list[str]
+) -> None:
+    rows = []
+    for metric in metric_keys:
+        normal = [results[seed, "normal"][metric] for seed in EVALUATION_SEEDS]
+        zero = [results[seed, "price_zero"][metric] for seed in EVALUATION_SEEDS]
+        for condition, values in (
+            ("normal", normal),
+            ("price_zero", zero),
+            ("price_zero_minus_normal", [z - n for z, n in zip(zero, normal)]),
+        ):
+            average, standard_deviation, low, high = summary(values)
+            rows.append(
+                {
+                    "metric": metric,
+                    "condition": condition,
+                    "n": len(values),
+                    "mean": average,
+                    "std": standard_deviation,
+                    "ci95_low": low,
+                    "ci95_high": high,
+                }
+            )
+
+    temporary_csv = SUMMARY_CSV.with_name(SUMMARY_CSV.name + ".tmp")
+    with temporary_csv.open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=SUMMARY_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+        file.flush()
+        os.fsync(file.fileno())
+    os.replace(temporary_csv, SUMMARY_CSV)
+
+    print(f"\nRaw metrics: {RAW_CSV}")
+    print(f"Summary: {SUMMARY_CSV}")
+    print("95% CI uses the two-sided Student-t interval with 4 degrees of freedom.")
+    print(",".join(SUMMARY_FIELDS))
+    for row in rows:
+        print(
+            f"{row['metric']},{row['condition']},{row['n']},"
+            f"{row['mean']:.9g},{row['std']:.9g},"
+            f"{row['ci95_low']:.9g},{row['ci95_high']:.9g}"
+        )
 
 
 def load_completed() -> tuple[dict[tuple[int, str], dict[str, float]], list[str] | None]:
@@ -161,8 +246,11 @@ def save_completed(
 
 
 def main() -> None:
-    if not WEIGHTS.is_file():
-        raise FileNotFoundError(WEIGHTS)
+    missing_files = [
+        path for path in (BASE_CONFIG, *CONFIG_OVERRIDES, WEIGHTS) if not path.is_file()
+    ]
+    if missing_files:
+        raise FileNotFoundError("Missing required files: " + ", ".join(map(str, missing_files)))
     RAW_CSV.parent.mkdir(parents=True, exist_ok=True)
     results, metric_keys = load_completed()
     for evaluation_seed in EVALUATION_SEEDS:
@@ -183,22 +271,9 @@ def main() -> None:
             results[key] = metrics
             save_completed(results, metric_keys)
 
-    print(f"\nRaw metrics: {RAW_CSV}")
-    print("95% CI uses the two-sided t interval with 4 degrees of freedom.")
-    print("metric,condition,mean,std,ci95_low,ci95_high")
-    for metric in metric_keys:
-        normal = [results[seed, "normal"][metric] for seed in EVALUATION_SEEDS]
-        zero = [results[seed, "price_zero"][metric] for seed in EVALUATION_SEEDS]
-        for condition, values in (
-            ("normal", normal),
-            ("price_zero", zero),
-            ("price_zero_minus_normal", [z - n for z, n in zip(zero, normal)]),
-        ):
-            average, standard_deviation, low, high = summary(values)
-            print(
-                f"{metric},{condition},{average:.9g},{standard_deviation:.9g},"
-                f"{low:.9g},{high:.9g}"
-            )
+    if metric_keys is None:
+        raise RuntimeError("No evaluation metrics were produced")
+    save_and_print_summary(results, metric_keys)
 
 
 if __name__ == "__main__":
