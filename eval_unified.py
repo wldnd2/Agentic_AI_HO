@@ -105,7 +105,15 @@ def load_heuristics() -> dict:
     """Pull the V3-fair heuristic functions out of build_common_reward_and_baselines.py
     without executing that script's module-level experiment code."""
     from leo_mappo.ue import MobilityState
-    source_path = ROOT / "build_common_reward_and_baselines.py"
+    candidates = [
+        ROOT / "build_common_reward_and_baselines.py",
+        ROOT / "archive" / "legacy_scripts" / "build_common_reward_and_baselines.py",
+    ]
+    source_path = next((p for p in candidates if p.is_file()), None)
+    if source_path is None:
+        raise FileNotFoundError(
+            "build_common_reward_and_baselines.py not found in:\n  "
+            + "\n  ".join(str(p) for p in candidates))
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
     wanted = {"mask_action", *HEURISTICS.values()}
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in wanted]

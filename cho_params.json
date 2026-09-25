@@ -1,0 +1,18 @@
+{
+  "dup_threshold_db": 6.0,
+  "exec_offset_db": 2.0,
+  "prep_offset_db": 1.0,
+  "release_offset_db": -1.0,
+  "release_steps": 3,
+  "ttt_steps": 1,
+  "_tuning": {
+    "validation_seeds": [
+      20,
+      21,
+      22
+    ],
+    "episodes_per_seed": 20,
+    "condition": "nominal",
+    "metric": "common_reward"
+  }
+}

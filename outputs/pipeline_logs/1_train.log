@@ -1,0 +1,40 @@
+
+===== 2026-09-25 01:14:45 train_multiseed.py --models M1 M2 M4 M5 --seeds 8 9 --jobs 6
+cpu_count=20 jobs=6 runs=8 iterations=2000
+  M5 seed=8 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m5_seed8
+  M5 seed=9 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m5_seed9
+  M4 seed=8 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m4_seed8
+  M4 seed=9 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m4_seed9
+  M2 seed=8 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m2_seed8
+  M2 seed=9 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m2_seed9
+  M1 seed=8 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m1_seed8
+  M1 seed=9 -> C:\Users\user\Desktop\Agentic_AI_HO\outputs\v3_anneal_2000_multiseed\m1_seed9
+[start] M5 seed=8 pid=20196
+[start] M5 seed=9 pid=9428
+[start] M4 seed=8 pid=27384
+[start] M4 seed=9 pid=9148
+[start] M2 seed=8 pid=7864
+[start] M2 seed=9 pid=28408
+[done] M2 seed=9 in 1h55m | running=5 queued=2 | total 1h55m
+[start] M1 seed=8 pid=4116
+[done] M2 seed=8 in 1h59m | running=5 queued=1 | total 1h59m
+[start] M1 seed=9 pid=15720
+[done] M1 seed=8 in 1h18m | running=5 queued=0 | total 3h13m
+[done] M1 seed=9 in 1h17m | running=4 queued=0 | total 3h16m
+[done] M5 seed=9 in 3h18m | running=3 queued=0 | total 3h18m
+[done] M4 seed=9 in 3h21m | running=2 queued=0 | total 3h21m
+[done] M4 seed=8 in 3h21m | running=1 queued=0 | total 3h21m
+[done] M5 seed=8 in 3h27m | running=0 queued=0 | total 3h27m
+
+All runs finished in 3h27m.
+
+===== 2026-09-25 10:13:52 train_multiseed.py --models M1 M2 M4 M5 --seeds 8 9 --jobs 6
+[skip] M5 seed=8: weights already exist
+[skip] M5 seed=9: weights already exist
+[skip] M4 seed=8: weights already exist
+[skip] M4 seed=9: weights already exist
+[skip] M2 seed=8: weights already exist
+[skip] M2 seed=9: weights already exist
+[skip] M1 seed=8: weights already exist
+[skip] M1 seed=9: weights already exist
+cpu_count=20 jobs=6 runs=0 iterations=2000
