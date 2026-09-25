@@ -88,7 +88,8 @@ def weights_path(model: str, train_seed: int) -> Path:
     return ROOT / "outputs" / "v3_anneal_2000_multiseed" / f"{model.lower()}_seed{train_seed}" / "mappo_weights.npz"
 
 
-def make_config(model_overrides, condition: str, eval_seed: int, agent_seed: int):
+def make_config(model_overrides, condition: str, eval_seed: int, agent_seed: int,
+                ablation: str = "none"):
     from leo_mappo import load_config
     paths = [*COMMON, *model_overrides]
     if condition == "stress":
@@ -98,6 +99,12 @@ def make_config(model_overrides, condition: str, eval_seed: int, agent_seed: int
     cfg = load_config(str(BASE), [str(p) for p in paths])
     cfg["environment_seed"] = int(eval_seed)
     cfg["agent_seed"] = int(agent_seed)
+    if ablation == "price_zero":
+        # Same switch as eval_m4_price_ablation.py: coordination price stays 0.
+        cfg["coordination"]["price_learning_rate"] = 0.0
+        cfg["coordination"]["initial_price"] = 0.0
+    elif ablation != "none":
+        raise ValueError(f"unknown ablation {ablation}")
     return cfg
 
 
@@ -128,9 +135,14 @@ def load_heuristics() -> dict:
     return policies
 
 
+def label_of(job: dict) -> str:
+    ablation = job.get("ablation", "none")
+    return job["model"] if ablation == "none" else f"{job['model']}[{ablation}]"
+
+
 def job_file(out_dir: Path, job: dict) -> Path:
     return out_dir / "raw" / (
-        f"{job['model']}_t{job['train_seed']}_{job['condition']}_e{job['eval_seed']}.json")
+        f"{label_of(job)}_t{job['train_seed']}_{job['condition']}_e{job['eval_seed']}.json")
 
 
 def run_job(job: dict) -> dict:
@@ -159,7 +171,8 @@ def run_job(job: dict) -> dict:
         result = summarize_metrics(totals, steps)
     else:
         model, train_seed = job["model"], job["train_seed"]
-        cfg = make_config(MODEL_OVERRIDES[model], job["condition"], job["eval_seed"], train_seed)
+        cfg = make_config(MODEL_OVERRIDES[model], job["condition"], job["eval_seed"], train_seed,
+                          job.get("ablation", "none"))
         env = LEOMobilityEnv(cfg)
         agent = MAPPO(env.obs_dim, env.global_state_dim, env.action_dim, cfg["mappo"],
                       train_seed, num_satellites=env.num_cells,
@@ -210,8 +223,8 @@ def summarize(out_dir: Path) -> None:
     groups: dict[tuple[str, str], dict[int, dict[int, dict]]] = defaultdict(lambda: defaultdict(dict))
     kinds = {}
     for r in records:
-        groups[(r["model"], r["condition"])][r["train_seed"]][r["eval_seed"]] = r["metrics"]
-        kinds[r["model"]] = r["kind"]
+        groups[(label_of(r), r["condition"])][r["train_seed"]][r["eval_seed"]] = r["metrics"]
+        kinds[label_of(r)] = r["kind"]
 
     rows = []
     for (model, condition), by_train in sorted(groups.items()):
@@ -241,7 +254,9 @@ def summarize(out_dir: Path) -> None:
         writer.writerows(rows)
 
     lookup = {(r["model"], r["condition"], r["metric"]): r for r in rows}
-    order = [m for m in [*MODEL_OVERRIDES, *HEURISTICS, *CHO_NAMES] if any(k[0] == m for k in groups)]
+    known = [*MODEL_OVERRIDES, *HEURISTICS, *CHO_NAMES]
+    labels = {k[0] for k in groups}
+    order = [m for m in known if m in labels] + sorted(labels - set(known))
     lines = []
     for condition in ("nominal", "stress"):
         if not any(k[1] == condition for k in groups):
@@ -263,6 +278,32 @@ def summarize(out_dir: Path) -> None:
                     cells.append(f"{r['mean']:.4f} ± {(r['ci95_high'] - r['mean']):.4f}")
             n = lookup[(model, condition, KEY_METRICS[0])]["n"]
             lines.append(f"| {model} | {n} | " + " | ".join(cells) + " |")
+    # Paired ablation effect: (ablated - normal) per training seed, averaged over
+    # evaluation seeds, CI across training seeds.
+    ablated = sorted(l for l in labels if "[" in l)
+    for label in ablated:
+        base = label.split("[")[0]
+        for condition in ("nominal", "stress"):
+            a, b = groups.get((label, condition)), groups.get((base, condition))
+            if not a or not b:
+                continue
+            common_ts = sorted(set(a) & set(b))
+            lines.append(f"\n### paired effect {label} minus {base}, {condition} "
+                         f"(train seeds {common_ts}; mean ± 95% CI half-width; per-seed values)\n")
+            lines.append("| metric | mean ± CI | per train seed |")
+            lines.append("|---|---|---|")
+            for metric in KEY_METRICS:
+                diffs = []
+                for ts in common_ts:
+                    es = sorted(set(a[ts]) & set(b[ts]))
+                    if not es or metric not in a[ts][es[0]]:
+                        continue
+                    diffs.append(mean(a[ts][e][metric] - b[ts][e][metric] for e in es))
+                if not diffs:
+                    continue
+                m, _, lo, hi = t_ci(diffs)
+                ci = "" if math.isnan(hi) else f" ± {hi - m:.4f}"
+                lines.append(f"| {metric} | {m:+.4f}{ci} | " + ", ".join(f"{d:+.4f}" for d in diffs) + " |")
     (out_dir / "summary_table.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     print(f"\nWrote {out_dir / 'summary_long.csv'} and {out_dir / 'summary_table.md'}")
@@ -282,6 +323,8 @@ def main() -> None:
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--out", default="outputs/unified_eval")
     parser.add_argument("--summarize-only", action="store_true")
+    parser.add_argument("--ablations", nargs="+", default=["none"], choices=["none", "price_zero"],
+                        help="evaluate each learned model normally and/or with the coordination price forced to 0")
     args = parser.parse_args()
 
     if args.episodes > STREAM_LENGTH:
@@ -298,10 +341,12 @@ def main() -> None:
             if not weights_path(model, ts).is_file():
                 skipped_missing.append(f"{model} t{ts}")
                 continue
-            for cond in args.conditions:
-                for es in args.eval_seeds:
-                    jobs.append({"kind": "model", "model": model, "train_seed": ts,
-                                 "condition": cond, "eval_seed": es, "episodes": args.episodes})
+            for ablation in args.ablations:
+                for cond in args.conditions:
+                    for es in args.eval_seeds:
+                        jobs.append({"kind": "model", "model": model, "train_seed": ts,
+                                     "condition": cond, "eval_seed": es, "episodes": args.episodes,
+                                     "ablation": ablation})
     if args.heuristics:
         load_heuristics()  # fail fast if extraction breaks
         for name in [*HEURISTICS, *CHO_NAMES]:
@@ -341,7 +386,7 @@ def main() -> None:
                 print(f"[FAILED] {job}: {exc!r}", flush=True)
                 continue
             job_file(out_dir, job).write_text(json.dumps(record), encoding="utf-8")
-            print(f"[{i}/{len(todo)}] {job['model']} t{job['train_seed']} {job['condition']} "
+            print(f"[{i}/{len(todo)}] {label_of(job)} t{job['train_seed']} {job['condition']} "
                   f"e{job['eval_seed']} ({record['elapsed_s'] / 60:.1f} min) "
                   f"| elapsed {(time.monotonic() - start) / 60:.1f} min", flush=True)
     summarize(out_dir)
