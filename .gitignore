@@ -19,3 +19,12 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+# LaTex
+*.aux
+*.fls
+*.fdb_latexmk
+*.log
+*.synctex.gz
+
+*.zip
