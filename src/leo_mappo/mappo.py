@@ -66,7 +66,9 @@ class MAPPO:
             raise ValueError("use_reasoning=true requires use_memory=true in Step 2")
         if self.use_coordination and not (self.use_memory and self.use_reasoning):
             raise ValueError("use_coordination=true requires memory and reasoning")
-        if self.use_constraint and not self.use_coordination:
+        # The M1D ablation (plain MAPPO + reliability Lagrangian) is allowed;
+        # recurrent models still need coordination before the constraint.
+        if self.use_constraint and self.use_memory and not self.use_coordination:
             raise ValueError("use_constraint=true requires coordination")
         self.num_satellites = int(num_satellites)
         self.candidate_count = int(candidate_count)

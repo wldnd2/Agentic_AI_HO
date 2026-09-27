@@ -61,6 +61,8 @@ MODEL_OVERRIDES = {
     "M3": [CFG / "memory_reasoning.yaml"],
     "M4": [CFG / "m4_coordination.yaml"],
     "M5": [CFG / "full_agentic.yaml", CFG / "dual_mid_0005.yaml"],
+    # Ablation: plain MAPPO (M1) trained with the M5 reliability Lagrangian only.
+    "M1D": [CFG / "m1_dual.yaml", CFG / "dual_mid_0005.yaml"],
 }
 SEED7_DIRS = {
     "M1": "m1_seed7", "M2": "m2_seed7", "M3": "m3_seed7",
@@ -83,6 +85,8 @@ T95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447,
 
 
 def weights_path(model: str, train_seed: int) -> Path:
+    if model not in SEED7_DIRS:  # new ablation models: every seed lives in the multiseed dir
+        return ROOT / "outputs" / "v3_anneal_2000_multiseed" / f"{model.lower()}_seed{train_seed}" / "mappo_weights.npz"
     if train_seed == 7:
         return ROOT / "outputs" / "v3_convergence_anneal_2000" / SEED7_DIRS[model] / "mappo_weights.npz"
     return ROOT / "outputs" / "v3_anneal_2000_multiseed" / f"{model.lower()}_seed{train_seed}" / "mappo_weights.npz"
@@ -103,9 +107,23 @@ def make_config(model_overrides, condition: str, eval_seed: int, agent_seed: int
         # Same switch as eval_m4_price_ablation.py: coordination price stays 0.
         cfg["coordination"]["price_learning_rate"] = 0.0
         cfg["coordination"]["initial_price"] = 0.0
-    elif ablation != "none":
+    elif ablation not in ("none", "reasoning_zero"):
         raise ValueError(f"unknown ablation {ablation}")
     return cfg
+
+
+def _uninformative_reasoning(original_analyze):
+    """Wrap LookaheadReasoner.analyze so that the actor receives an uninformative
+    reasoning feature: 0 for every feasible action and 1 for masked actions. This is
+    exactly the feature the actor sees during training when all plan costs are tied,
+    so it removes the planner's ranking without creating an out-of-range input."""
+    from dataclasses import replace
+
+    def analyze(self, env, masks=None, *args, **kwargs):
+        result = original_analyze(self, env, masks, *args, **kwargs)
+        m = env.action_masks() if masks is None else np.asarray(masks, dtype=np.float64)
+        return replace(result, features=np.where(m > 0.0, 0.0, 1.0).astype(np.float64))
+    return analyze
 
 
 def load_heuristics() -> dict:
@@ -194,8 +212,17 @@ def run_job(job: dict) -> dict:
             return original_reset(seed=None if seed is None else int(seed) + offset)
 
         env.reset = seeded_reset  # type: ignore[method-assign]
-        result = evaluate_policy(env, agent, episodes=episodes, deterministic=False,
-                                 evaluation_action_seed=7000 + job["eval_seed"])
+        from leo_mappo.reasoning import LookaheadReasoner
+        original_analyze = LookaheadReasoner.analyze
+        if job.get("ablation", "none") == "reasoning_zero":
+            if not agent.use_reasoning:
+                raise ValueError(f"{model} has no reasoning module to ablate")
+            LookaheadReasoner.analyze = _uninformative_reasoning(original_analyze)
+        try:
+            result = evaluate_policy(env, agent, episodes=episodes, deterministic=False,
+                                     evaluation_action_seed=7000 + job["eval_seed"])
+        finally:
+            LookaheadReasoner.analyze = original_analyze  # worker processes are reused
 
     if job["model"] in CHO_NAMES:
         from cho_baselines import load_cho_params
@@ -323,7 +350,7 @@ def main() -> None:
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--out", default="outputs/unified_eval")
     parser.add_argument("--summarize-only", action="store_true")
-    parser.add_argument("--ablations", nargs="+", default=["none"], choices=["none", "price_zero"],
+    parser.add_argument("--ablations", nargs="+", default=["none"], choices=["none", "price_zero", "reasoning_zero"],
                         help="evaluate each learned model normally and/or with the coordination price forced to 0")
     args = parser.parse_args()
 
@@ -374,7 +401,7 @@ def main() -> None:
     print(f"jobs total={len(jobs)} todo={len(todo)} parallel={args.jobs} episodes={args.episodes}")
     start = time.monotonic()
     # Heavier jobs first for better packing.
-    weight = {"M5": 5, "M4": 4, "M3": 3, "M2": 2, "M1": 1}
+    weight = {"M5": 5, "M4": 4, "M3": 3, "M2": 2, "M1": 1, "M1D": 1}
     todo.sort(key=lambda j: -weight.get(j["model"], 0))
     with ProcessPoolExecutor(max_workers=args.jobs) as pool:
         futures = {pool.submit(run_job, job): job for job in todo}

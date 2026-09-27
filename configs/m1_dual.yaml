@@ -1,0 +1,7 @@
+# M1 + goal regulation (ablation): no memory, reasoning, or coordination;
+# trained with the same reliability Lagrangian as M5.
+mappo:
+  use_memory: false
+  use_reasoning: false
+  use_coordination: false
+  use_constraint: true
