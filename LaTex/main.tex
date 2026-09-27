@@ -1,6 +1,8 @@
 % =====================================================================
-%  System Model / Problem Formulation / Proposed Framework
-%  Derived line-by-line from the CHO_simul code base (src/leo_mappo, configs/).
+%  main.tex -- full manuscript (merged final draft)
+%  System model / method derived line-by-line from the CHO_simul code base.
+%  Bibliography: embedded thebibliography at the end (single file).
+%  Figures: fig/pdf/figXX_*.pdf produced by make_paper_figures.m.
 %  All numerical values in Table I match the configuration used for the
 %  reported experiments: default.yaml + validation_agentic_challenge_v3.yaml
 %  + eta_handover_005.yaml + validation_dwell_15.yaml (+ lr_anneal_linear.yaml
@@ -16,10 +18,24 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{graphicx}
+\graphicspath{{./}{../}}   % figures in fig/pdf next to this file or one folder up
+\usepackage{rotating}
 \usepackage{cite}
 \usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
 
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+% Include a figure if it exists (next to main.tex or one folder up);
+% otherwise draw a placeholder so that compilation never stops.
+\newcommand{\figinclude}[2][\columnwidth]{%
+  \IfFileExists{#2}{\includegraphics[width=#1]{#2}}{%
+    \IfFileExists{../#2}{\includegraphics[width=#1]{../#2}}{%
+      \fbox{\parbox{0.92#1}{\centering\vspace{10mm}%
+        \textcolor{red}{Missing figure: \texttt{\detokenize{#2}}}\\[1mm]
+        \footnotesize run make\_paper\_figures.m\vspace{10mm}}}}}}
+
 \newcommand{\Lset}{\mathcal{L}}
 \newcommand{\Nset}{\mathcal{N}}
 \newcommand{\Aset}{\mathcal{A}}
@@ -29,145 +45,209 @@
 
 \begin{document}
 
-\title{\todo{Title}: Capability-Structured Agentic Multi-Agent Control of Conditional Handover and PDCP Duplication in LEO Networks}
-\author{\todo{Authors}}
+\title{Capability-Structured Agentic Multi-Agent Control of Conditional Handover and PDCP Duplication in LEO Satellite Networks}
+\author{\todo{Authors and affiliations}}
 \maketitle
+
+\begin{abstract}
+Low Earth orbit (LEO) satellite networks force user equipments (UEs) to
+change serving satellites frequently, while conditional handover (CHO)
+and packet data convergence protocol (PDCP) duplication expose new but
+coupled control options: when to prepare a candidate, when to duplicate,
+and when to switch. We formulate the joint control of CHO preparation,
+PDCP duplication, and primary-satellite switching among UEs that share
+finite satellite and preparation resources as a constrained decentralized
+partially observable Markov decision process with delayed, noisy
+telemetry and hidden link degradation. We then propose a
+capability-structured agentic framework built on centralized training
+with decentralized execution, in which perception, recurrent memory,
+ephemeris-based reasoning, congestion-price coordination, and a
+primal--dual reliability regulator are introduced as separable
+capabilities without placing a language model in the control loop.
+Across $25$ independently trained policies, every learned
+policy--scenario pair achieves a lower outage ratio than a tuned
+3GPP-inspired A3/TTT CHO rule. For the full M5 architecture, the mean
+outage reduction relative to CHO is $60\%$ under nominal conditions and
+$46\%$ under compound stress. Compared with the memoryless M1 policy, M5
+achieves nearly the same reliability with $39\%$ fewer handover
+executions and a $70\%$ lower ping-pong ratio. Within-policy ablations
+further show that all ten price-enabled M4/M5 policies exploit the
+congestion signal to suppress unnecessary mobility and redundant
+resource usage. A behavioral analysis reveals that
+the agents use CHO preparations as short-lived options and commit only
+$6\%$ of them. We also report the limitations of the approach, including
+increased preparation signalling and higher sensitivity to compound
+disturbances.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Agentic AI, conditional handover, PDCP duplication, LEO satellite
+networks, multi-agent reinforcement learning, non-terrestrial networks.
+\end{IEEEkeywords}
 
 % =====================================================================
 \section{Introduction}
 \label{sec:introduction}
 % =====================================================================
 
-Low Earth orbit (LEO) satellite networks are emerging as a key component
-of non-terrestrial networks (NTNs) toward ubiquitous sixth-generation
-(6G) connectivity, owing to their wide-area coverage and substantially
-lower propagation delay than conventional geostationary satellite
-systems~\cite{giordani2021ntn,aers2026}.
-Their rapid orbital motion, however, continuously changes satellite
-visibility and link quality, forcing user equipments (UEs) to repeatedly
-transfer their serving links across satellites. As LEO constellations
-become denser, a UE may simultaneously observe multiple candidate
-satellites, while many UEs compete for the finite radio and control-plane
-resources of the same satellites. Mobility management therefore becomes
-not merely a problem of selecting the strongest satellite, but a
-sequential decision problem that couples service continuity, resource
-contention, and handover overhead.
+Non-terrestrial networks (NTNs) are expected to play a key role in
+sixth-generation (6G) wireless systems by extending broadband
+connectivity beyond the coverage of terrestrial infrastructure
+\cite{giordani2021ntn,3gpp38811,fontanesi2026aisurvey}.
+Among different NTN platforms, low Earth orbit (LEO) satellite
+constellations are particularly attractive because their relatively low
+altitude provides lower propagation delay and path loss than
+geostationary satellite systems while enabling large-scale geographical
+coverage \cite{giordani2021ntn,juan2022handover}.
+The rapid orbital motion that enables such large-scale coverage,
+however, also makes mobility management a fundamental challenge.
+Satellite visibility continuously changes, serving opportunities are
+time limited, and user equipments (UEs) may experience frequent
+inter-satellite handovers even when they remain geographically
+stationary \cite{ji2021mobility,juan2022handover}.
 
-The Third Generation Partnership Project (3GPP) provides two mechanisms
-that are particularly relevant to this problem. Conditional handover
-(CHO) allows candidate configurations to be prepared before the actual
-handover execution, thereby separating handover preparation from the
-eventual serving-cell switch~\cite{3gpp38331}. At the data plane, packet
-data convergence protocol (PDCP) duplication allows the same PDCP data
-to be transmitted over multiple lower-layer legs to improve delivery
-reliability~\cite{3gpp38323}. These mechanisms provide useful degrees of
-freedom for highly mobile NTN environments, but they also create a
-nontrivial control problem. Preparing many candidate links reserves
-network resources, persistent duplication consumes additional radio
-capacity, whereas switching too aggressively increases handover and
-ping-pong events. The desirable configuration therefore depends jointly
-on the UE's current service condition, the anticipated lifetime of a
-candidate link, and the congestion created by other UEs.
+Existing LEO mobility studies have addressed this problem from several
+directions. Classical schemes select serving satellites according to
+remaining visibility time, elevation angle, link quality, or satellite
+load, and graph- or flow-based formulations coordinate multiple users
+under constellation-wide constraints
+\cite{zhang2021networkflow,juan2022handover}.
+Location-aware conditional handover (CHO) further exploits predictable
+satellite motion to improve handover triggering
+\cite{lee2023locationcho}, whereas AcceHo reduces handover latency by
+leveraging deterministic satellite trajectories and reducing
+access--core network interaction \cite{wu2024acceho}.
+At a different layer, SKYCASTLE redesigns mobility management around
+distributed satellite anchors to mitigate service interruptions caused
+by the joint mobility of users and satellite infrastructure
+\cite{li2024skycastle}.
+These studies demonstrate that satellite mobility is sufficiently
+structured to support proactive control rather than purely reactive
+signal-strength-based handover.
 
-A substantial body of work has addressed LEO mobility using
-measurement- or location-based rules, graph optimization, and learning
-methods~\cite{juan2022handover,lee2023cho,zhang2021networkflow,
-wu2024acceho}. More recent approaches exploit temporal satellite
-mobility or multi-connectivity to improve service continuity.
-For example, GEMS jointly models spatial UE--satellite association and
-temporal mobility evolution for maintaining dual connectivity
-\cite{wang2026gems}, while learning-based schemes employ deep or
-multi-agent reinforcement learning to adapt satellite handover decisions
-to changing propagation conditions and network load
-\cite{liu2024marlhandover,yang2024mafddqn}.
-These studies establish the importance of mobility awareness and
-distributed decision making, but target selection and handover timing are
-typically treated as the principal control variables. Meanwhile,
-multi-connectivity and multipath schemes exploit simultaneous links for
-reliability and continuity~\cite{pupiales2021multiconnectivity}.
-What remains less explored is the \emph{joint, stateful control of CHO
-preparation, PDCP duplication, and primary-link switching} when multiple
-UEs contend for shared satellite resources under delayed and imperfect
-telemetry.
+Multi-connectivity (MC) provides an additional mechanism for improving
+service continuity. By allowing a UE to simultaneously exploit multiple
+radio paths, MC can increase throughput, provide path redundancy, and
+improve reliability \cite{pupiales2021mc,lopez2022empiricalmc}.
+3GPP has investigated multi-connectivity and service continuity for NTN
+architectures \cite{3gpp38821}, while NR Radio Resource Control (RRC)
+supports conditional reconfiguration and CHO
+\cite{3gpp38331}. At the user plane, Packet Data Convergence Protocol
+(PDCP) supports packet duplication over multiple lower-layer entities,
+including explicit activation and deactivation of duplication
+\cite{3gpp38323}. These mechanisms are complementary: a candidate link
+can be prepared before a mobility event, duplicated transmission can
+temporarily protect service continuity, and the primary serving link can
+subsequently be switched when appropriate.
 
-This challenge is further complicated by partial observability.
-Instantaneous measurements alone do not reveal whether a degradation is
-transient or persistent, and a locally attractive handover target can
-become unavailable before the preparation and switching procedure
-completes. Moreover, independent UE decisions are coupled through shared
-satellite capacity: simultaneous preparations and duplicated
-transmissions toward the same satellite can make individually reasonable
-actions collectively inefficient. Consequently, effective mobility
-control requires not only reactive action selection but also temporal
-memory, anticipation of delayed consequences, and lightweight
-coordination among distributed decision makers.
+Nevertheless, exposing these additional protocol options also creates a
+more difficult control problem. Aggressive candidate preparation can
+consume limited preparation resources, persistent packet duplication
+increases radio-resource usage, and frequent switching can cause
+unnecessary handovers and ping-pong behavior. Conversely, delaying
+preparation or duplication may expose the UE to service degradation or
+outage when the serving satellite becomes unavailable. Furthermore,
+the decisions of different UEs are inherently coupled because they
+compete for shared satellite capacity and candidate-preparation
+opportunities. Consequently, locally attractive mobility decisions may
+be collectively inefficient when many UEs simultaneously target the
+same satellite.
 
-These requirements are closely aligned with the emerging concept of
-Agentic AI. Recent wireless research characterizes agentic systems
-through autonomous perception, reasoning, goal-directed action, and
-coordination, with both large-language-model (LLM)-based and
-reinforcement-learning-based realizations
-\cite{zheng2026agenticdrl,edgegeneral2026}.
-In satellite networks, AERS demonstrates an agentic multi-agent
-architecture for decentralized beam and resource scheduling
-\cite{aers2026}, whereas LLM-based frameworks employ semantic reasoning
-for satellite resource orchestration and SAGIN management
-\cite{thinkdo2026,saginagent2026}. Other recent studies combine LLMs
-with MAPPO for cognitive satellite--terrestrial resource allocation
-\cite{lemapppo2026} or apply agentic decision making to multipath LEO
-transmission~\cite{agenticmultipath2026}. These works demonstrate the
-potential of Agentic AI in communication networks, but their primary
-focus is resource orchestration, intent interpretation, routing, or
-transport control rather than protocol-level LEO mobility.
+Recent learning-based approaches have demonstrated the ability of
+reinforcement learning (RL) to address the dynamic and multi-attribute
+nature of satellite handover. DQN-based methods adapt handover
+decisions to changing network conditions
+\cite{yang2023dqn}, while multi-agent deep RL has been developed to
+account for dynamic propagation conditions, satellite capacity, and
+distributed user decisions \cite{liu2024marlho,yang2024fingerprints}.
+GEMS further incorporates spatial and temporal satellite mobility into
+dual-connectivity configuration using graph attention
+\cite{wang2026gems}. These approaches substantially improve the
+adaptability of satellite mobility management. However, most existing
+learning-based schemes focus primarily on \emph{which} satellite to
+select or \emph{when} a handover should occur. The sequential and
+stateful interaction among candidate preparation, temporary
+duplication, primary-link switching, release, and rollback remains
+largely unexplored, particularly when observations are delayed or noisy
+and multiple UEs share finite satellite resources.
 
-Motivated by this gap, we develop a capability-structured agentic
-multi-agent framework for joint CHO and PDCP-duplication control in
-shared-capacity LEO networks. Each UE acts autonomously using only its
-locally available telemetry and protocol state, while centralized
-training with decentralized execution (CTDE) is used to learn
-cooperative policies. Rather than relying on a monolithic LLM, the
-framework explicitly instantiates the capabilities required by the
-mobility problem: recurrent memory summarizes temporally correlated
-local experience; a protocol-aware analytical reasoner exploits
-deterministic satellite ephemeris to anticipate the delayed consequences
-of candidate actions; and lightweight congestion prices communicate
-shared-resource pressure without exposing the states or actions of other
-UEs. A training-time primal--dual controller further regulates the
-reliability objective. This decomposition yields the M1--M5 family and
-allows the roles of perception, memory, reasoning, coordination, and
-goal regulation to be examined separately.
+These characteristics motivate a control architecture that goes beyond
+one-shot handover selection. A mobility controller must retain temporal
+context to distinguish transient and persistent degradation, reason
+about the future availability of candidate satellites, coordinate with
+other UEs under shared resource constraints, and adapt its actions
+toward reliability objectives. Such requirements are closely related to
+the emerging notion of Agentic AI. Recent studies characterize Agentic
+AI through autonomous perception, contextual reasoning, persistent
+memory, goal-directed action, and multi-agent coordination
+\cite{sapkota2026agentic,jiang2026tutorial,zhang2026edgeagentic}.
+Advanced DRL has also been identified as an important mechanism for
+realizing sequential and adaptive agentic control in wireless networks
+\cite{zheng2026agenticdrl}.
+
+Agentic AI in communication networks does not necessarily imply that a
+large language model (LLM) must directly execute every real-time control
+action. LLM-centric approaches have recently been investigated for
+satellite spectrum orchestration, where natural-language service
+requirements and spectrum observations are processed to generate
+resource-allocation strategies \cite{ni2026llmleo}. In contrast, AERS
+demonstrates a decentralized Agentic-AI architecture in which
+autonomous beam agents collaboratively perform satellite resource
+scheduling through learning and environmental interaction
+\cite{shen2026aers}. Agentic multi-agent learning has also been applied
+to task-oriented resource orchestration in satellite-assisted vehicular
+networks \cite{xie2026agenticiov}. These studies suggest that the
+appropriate realization of agentic intelligence depends on the
+timescale and structure of the underlying network-control problem.
+
+Motivated by these observations, we propose a
+\emph{capability-structured agentic multi-agent mobility framework} for
+joint CHO and PDCP-duplication control in shared-capacity LEO satellite
+networks. Each UE acts as an autonomous agent that controls candidate
+preparation, duplication activation/deactivation, primary-link
+switching, release, and rollback. The framework employs centralized
+training with decentralized execution (CTDE) based on multi-agent
+proximal policy optimization (MAPPO), while explicitly separating the
+capabilities required for robust mobility control. Recurrent memory
+summarizes temporally correlated observations, a protocol-aware
+reasoning module exploits deterministic ephemeris information to assess
+future candidate viability, and a lightweight satellite congestion
+price communicates shared-resource pressure without exchanging the
+full states or actions of other UEs. A reliability-oriented dual
+controller further regulates the outage objective during training.
 
 The main contributions of this work are summarized as follows.
 
 \begin{itemize}
     \item We formulate joint CHO preparation, PDCP-duplication control,
-    and primary-satellite switching in a shared-capacity LEO network as
-    a constrained decentralized partially observable Markov decision
-    process. The model explicitly captures preparation contention,
-    duplication overhead, handover cost, delayed and noisy telemetry,
-    persistent hidden link degradation, and stochastic traffic and
-    capacity disturbances.
+    and primary-satellite switching as a decentralized partially
+    observable sequential decision problem in a shared-capacity LEO
+    network. The formulation captures delayed and noisy observations,
+    time-varying satellite visibility, hidden link degradation,
+    preparation contention, duplication overhead, and mobility cost.
 
-    \item We develop a capability-structured agentic control framework
-    built on CTDE-MAPPO. Beyond a reactive local policy, the framework
-    incorporates recurrent memory for latent-condition inference,
-    protocol-aware ephemeris reasoning for proactive mobility decisions,
-    and satellite congestion prices for low-overhead inter-agent
-    coordination without exchanging UE-level states or actions.
+    \item We develop a capability-structured CTDE-MAPPO framework in
+    which perception, recurrent memory, ephemeris-assisted reasoning,
+    and resource-aware coordination are introduced as distinct mobility
+    capabilities. This design supports capability-structured comparisons
+    and targeted within-policy ablations without relying on a monolithic
+    LLM-based controller.
 
-    \item We integrate mobility reliability through a constrained
-    learning formulation in which a projected reliability multiplier
-    regulates outage pressure during training, while retaining
-    decentralized execution and the same protocol action space.
+    \item We introduce a lightweight coordination mechanism based on
+    satellite congestion prices. The price summarizes shared-resource
+    pressure and influences decentralized mobility decisions without
+    requiring UE-to-UE exchange of local observations or actions. A
+    primal--dual reliability controller is further incorporated to
+    regulate outage-related constraints during training.
 
-    \item We evaluate the framework across independently trained
-    policies, multiple stochastic evaluation realizations, conventional
-    mobility and duplication heuristics, and a 3GPP-inspired
-    A3/TTT-based CHO baseline. We further consider overlapping traffic,
-    capacity, and blockage disturbances to examine zero-shot behavior
-    outside the nominal operating distribution, together with
-    capability-level ablations that expose the mechanisms underlying
-    memory and coordination.
+    \item We conduct protocol- and capability-level evaluations using
+    conventional handover and duplication heuristics, a
+    3GPP-inspired A3/TTT CHO baseline, independently trained capability
+    variants, targeted reasoning and coordination ablations, and
+    compound traffic, capacity, and blockage disturbances. The
+    evaluation characterizes not only service reliability but also
+    duplication overhead, handover activity, ping-pong behavior, and
+    shared-resource usage.
 \end{itemize}
 
 % =====================================================================
@@ -175,129 +255,170 @@ The main contributions of this work are summarized as follows.
 \label{sec:related}
 % =====================================================================
 
-\subsection{LEO Mobility, Conditional Handover, and Multi-Connectivity}
+\subsection{LEO Mobility Management and Conditional Handover}
 
-Mobility management has long been recognized as a fundamental challenge
-of LEO satellite access networks because the serving opportunities of
-individual satellites are inherently time limited. Early approaches
-formulated satellite handover through graph- or flow-based optimization,
-using link quality, visibility duration, load, or service requirements
-to select subsequent serving satellites
-\cite{zhang2021networkflow,juan2022handover}.
-Location-assisted and conditional-handover approaches further exploit
-the predictable motion of LEO satellites to trigger mobility procedures
-before the serving link becomes unusable
-\cite{lee2023cho}. AcceHo similarly exploits satellite mobility
-information to accelerate mobile-satellite handover
-\cite{wu2024acceho}, while SkyCastle addresses mobility-induced
-service disruption from a broader system perspective
-\cite{li2024skycastle}.
+The high orbital velocity of LEO satellites makes mobility management
+fundamentally different from that in terrestrial cellular networks.
+Satellite and user mobility jointly produce time-varying coverage,
+frequent handovers, and additional signaling and decision-making
+overhead \cite{ji2021mobility}. Conventional LEO handover schemes
+therefore consider satellite-specific information such as elevation
+angle, remaining visibility time, channel availability, and load.
+For example, Zhang \emph{et al.} formulate multi-user satellite
+handover as a network-flow problem whose edge weights reflect user
+requests and satellite service quality
+\cite{zhang2021networkflow}. Juan \emph{et al.} systematically examine
+5G NR handover procedures in LEO networks and exploit predictable
+satellite motion and antenna information for mobility control
+\cite{juan2022handover}.
 
-Multi-connectivity provides another route to service continuity by
-allowing multiple access links to coexist rather than relying exclusively
-on a single serving connection
-\cite{pupiales2021multiconnectivity,lopez2022multiconnectivity}.
-Recent work such as GEMS explicitly incorporates the temporal evolution
-of satellite coverage into dual-connectivity configuration and balances
-instantaneous service improvement against future continuity
-\cite{wang2026gems}. These approaches highlight the value of retaining
-multiple candidate or serving links across mobility transitions.
+The predictability of satellite motion has also motivated proactive
+handover mechanisms. Lee \emph{et al.} propose location-based CHO for
+LEO NTN, using the relative distance between a UE and serving/target
+cell reference locations rather than relying only on received signal
+strength \cite{lee2023locationcho}. AcceHo reduces handover latency by
+predicting future satellite access and avoiding repeated interaction
+with the core network during the handover procedure
+\cite{wu2024acceho}. At the network layer, SKYCASTLE deploys
+distributed satellite anchors and convergence-free forwarding to
+mitigate connection interruption and latency caused by the mobility of
+both users and LEO infrastructure \cite{li2024skycastle}. These works
+establish the importance of proactive satellite mobility management,
+but they do not jointly determine candidate preparation, temporary
+PDCP duplication, and subsequent primary-link switching.
 
-% [확인] PMPS가 arXiv 또는 공개 proceedings로 나와 있을 때만 아래 문단의 주석을 해제하세요.
-%        비공개 원고라면 인용하지 말고 이 문단을 삭제합니다.
-% Predictive multi-connectivity approaches can go further by attempting
-% to remove discrete handover interruptions altogether through continuous
-% multi-satellite transmission and orbit-aware traffic migration
-% \cite{pmps}. In contrast, our objective is not to eliminate the NR
-% mobility procedure, but to autonomously control the standardized
-% preparation--duplication--switching process and its associated shared
-% resource cost.
+\subsection{Multi-Connectivity and PDCP Duplication}
 
-At the protocol level, NR conditional reconfiguration and PDCP
-duplication provide complementary mechanisms for realizing such
-redundancy. CHO permits a target to be prepared before execution
-\cite{3gpp38331}, while PDCP supports activation and deactivation of
-duplicated transmissions and duplicate-PDU handling
-\cite{3gpp38323}. However, standards define the protocol mechanisms
-rather than prescribing a LEO-specific policy for deciding when a UE
-should prepare a candidate, activate duplication, execute the switch, or
-release the reserved target under multi-user contention. Our work
-focuses precisely on this decision layer.
+Multi-connectivity enables a UE to simultaneously exploit radio
+resources from multiple access points and can improve throughput,
+service continuity, and reliability through traffic aggregation or
+path redundancy \cite{pupiales2021mc}. Its potential in integrated
+terrestrial--satellite networks has also been demonstrated
+experimentally. Lopez \emph{et al.} evaluate simultaneous terrestrial
+5G and Starlink connectivity and show the potential of MC for reducing
+high-end latency and improving continuous service availability
+\cite{lopez2022empiricalmc}.
 
-\subsection{Learning-Based Mobility Control in LEO Networks}
+3GPP NTN studies explicitly consider multi-connectivity involving
+NTN-based NG-RAN and service continuity between NTN and terrestrial
+networks \cite{3gpp38821}. At the RRC layer, conditional
+reconfiguration enables candidate mobility configurations to be stored
+and conditionally executed \cite{3gpp38331}. At the user plane, the
+NR PDCP specification defines routing and duplication functions and
+supports activation/deactivation of PDCP duplication
+\cite{3gpp38323}. These standardized mechanisms provide the protocol
+building blocks for reliable mobility, but the standards intentionally
+leave many control decisions to network implementation.
 
-The rapid dynamics and large decision spaces of emerging
-mega-constellations have motivated learning-based mobility control.
-Deep reinforcement learning has been used to replace repeated online
-optimization with policies that can react rapidly after offline
-training. Liu \emph{et al.} considered dynamic propagation conditions
-and limited satellite capacity and developed centralized and distributed
-multi-agent handover schemes
-\cite{liu2024marlhandover}. Yang \emph{et al.} formulated LEO handover
-as a decentralized decision problem and introduced multi-agent
-fingerprints with DDQN to mitigate learning non-stationarity and
-satellite load imbalance
-\cite{yang2024mafddqn}. Other approaches employ DQN-based handover
-selection~\cite{yang2023dqnho}, safe learning for online NTN service
-provisioning~\cite{zhang2025oracle}, or hierarchical decision making
-that separates handover timing from target selection
-\cite{hrlleohandover}.
+Recent work has therefore studied how secondary links should be
+selected and maintained. GEMS formulates TN--NTN and NTN--NTN dual
+connectivity as a spatial matching problem and extends the graph
+temporally to account for future satellite mobility
+\cite{wang2026gems}. Such work demonstrates that continuity-aware MC
+must account for both current link utility and future service windows.
+Our problem is complementary but different: rather than determining
+only the dual-connectivity association, we control the
+\emph{lifecycle} of the mobility procedure---preparation, duplication,
+commit, release, and rollback---under shared preparation and radio
+capacity.
 
-These approaches demonstrate that learning can effectively handle
-dynamic channel and load conditions that are difficult to capture with
-fixed thresholds. Nevertheless, the learned action is commonly the
-handover decision itself---for example, whether or where to switch.
-This leaves two issues particularly relevant to conditional mobility.
-First, preparation, duplication, execution, release, and rollback form a
-stateful protocol sequence whose consequences extend across several
-control epochs. Second, independently learned UE decisions interact
-through finite preparation slots and shared satellite capacity. The
-present work therefore treats mobility as a protocol-level multi-agent
-control problem rather than a sequence of isolated serving-satellite
-selections.
+% [확인] PMPS가 arXiv 또는 공개 proceedings로 나와 있을 때만 아래 문단의 주석을 해제하고
+%        references.bib에 pmps 항목을 추가하세요.
+% Predictive multi-satellite schemes further exploit deterministic
+% orbital motion to migrate traffic before a serving satellite departs,
+% thereby replacing discrete handover interruptions with continuous
+% multi-path operation \cite{pmps}. In contrast, our work preserves the
+% underlying mobility procedure and focuses on autonomously controlling
+% the preparation, duplication, switching, and release decisions under
+% shared satellite resources.
+
+\subsection{Learning-Based Satellite Mobility Control}
+
+The dynamics and large state spaces of satellite networks have
+motivated the use of RL for adaptive mobility management. Yang
+\emph{et al.} develop the DQN-ALrM handover method for
+satellite--ground integrated networks, using a customized DQN with an
+adaptive learning rate to handle long-term multi-metric handover
+optimization \cite{yang2023dqn}. Liu \emph{et al.} consider
+mega-constellations under dynamic propagation conditions and develop
+centralized and distributed multi-agent deep-RL handover schemes that
+account for user-rate requirements and satellite load
+\cite{liu2024marlho}.
+
+Distributed multi-agent control has also been investigated to reduce
+centralized signaling and computational overhead. Yang \emph{et al.}
+formulate LEO handover as a decentralized decision process and employ
+multi-agent fingerprints with DDQN to mitigate training
+non-stationarity and load imbalance
+\cite{yang2024fingerprints}. GEMS uses graph attention to incorporate
+future satellite mobility into connectivity decisions
+\cite{wang2026gems}. Collectively, these studies demonstrate that
+learning-based policies can outperform static or myopic handover
+rules in dynamic environments.
+
+However, existing learning-based mobility solutions predominantly
+treat handover as a serving-target or trigger decision. A CHO and
+PDCP-duplication procedure instead has an internal protocol state:
+a target may first be prepared, duplication may subsequently be
+activated or deactivated, a switch may be committed, or the candidate
+may be released or rolled back. Actions at one control epoch therefore
+constrain the feasible actions and resource consumption at subsequent
+epochs. Moreover, multiple UE policies interact through finite
+satellite capacity and preparation resources. Our framework explicitly
+models this stateful protocol evolution and multi-user coupling under
+partial observability.
 
 \subsection{Agentic AI for Wireless and Satellite Networks}
 
-Agentic AI has recently emerged as a framework for moving wireless
-network intelligence beyond one-shot prediction or reactive
-optimization. Recent surveys describe agentic systems as autonomous
-decision makers that combine perception, reasoning, action, memory, and
-goal-directed interaction, and identify advanced DRL as an important
-realization path for sequential wireless control
-\cite{zheng2026agenticdrl,edgegeneral2026,agentictutorial2026}.
+Agentic AI has recently emerged as a broader paradigm for autonomous
+network intelligence. Recent taxonomies associate Agentic AI with
+capabilities including contextual perception, persistent memory,
+reasoning, goal-directed behavior, autonomous action, and multi-agent
+coordination \cite{sapkota2026agentic,zhang2026edgeagentic}.
+The recent JSAC tutorial on future intelligent communications further
+describes Agentic AI as a closed-loop architecture that integrates
+perception, reasoning, planning, tools, and memory for continuous
+interaction with dynamic communication environments
+\cite{jiang2026tutorial}. Advanced DRL is consequently receiving
+attention as an enabling technology for autonomous and adaptive
+wireless agents that must make sequential decisions
+\cite{zheng2026agenticdrl}.
 
-Two broad implementation directions are emerging. One direction uses
-LLMs as semantic or strategic reasoning engines. The Think--Do
-architecture separates high-level LLM reasoning from real-time
-satellite resource execution~\cite{thinkdo2026}, while agentic SAGIN
-frameworks employ LLM agents to interpret intents and coordinate
-specialized RL modules~\cite{saginagent2026}. LLM-enhanced MAPPO has
-also been investigated for resource allocation in cognitive
-satellite--terrestrial networks~\cite{lemapppo2026}. Such architectures
-are particularly attractive when human intent, semantic knowledge, or
-cross-domain orchestration must be interpreted.
+Current communication-oriented Agentic-AI research follows several
+implementation paths. LLM-centric approaches exploit semantic
+reasoning and natural-language interaction. For example, Ni
+\emph{et al.} employ an LLM as a spectrum-orchestration engine that
+combines spectrum observations with natural-language QoS descriptions
+to produce LEO resource-allocation strategies
+\cite{ni2026llmleo}, and the Think--Do architecture separates
+high-level LLM reasoning from real-time execution for satellite
+resource orchestration \cite{cao2026thinkdo}. Such approaches are
+particularly useful when a controller must interpret human intent or
+unstructured knowledge.
 
-A complementary direction implements agentic capabilities directly
-through distributed learning and domain-specific decision modules.
-AERS models satellite beams as autonomous agents and combines recurrent
-multi-agent reinforcement learning with decentralized execution for
-beam hopping, user scheduling, and power allocation
-\cite{aers2026}. Agentic decision making has also been applied to
-intent-aware multipath routing and congestion control in large-scale
-LEO networks~\cite{agenticmultipath2026}, and to task-oriented resource
-orchestration in satellite-assisted vehicular networks
-\cite{agenticsiov2026}.
+A complementary direction focuses on autonomous domain-specific agents
+whose perception and action spaces are directly tied to network
+control. AERS models individual satellite beams as autonomous agents
+that coordinate beam hopping, user scheduling, and power allocation
+under shared satellite constraints \cite{shen2026aers}. Xie
+\emph{et al.} integrate multi-agent learning and task-oriented
+attention for distributed resource orchestration in
+satellite-assisted IoV \cite{xie2026agenticiov}. More broadly, recent
+surveys identify AI/ML as an important enabler for adaptive satellite
+communication while emphasizing the computational constraints of
+on-board implementation \cite{fontanesi2026aisurvey}.
 
-Our work belongs to the latter direction but addresses a different
-control layer. We do not employ an LLM to generate mobility actions at
-runtime. Instead, the agentic capabilities are instantiated by
-lightweight mechanisms matched to the structure of LEO mobility:
-recurrent local memory captures temporal experience, deterministic
-ephemeris provides a physics-grounded reasoning tool, and a scalar
-congestion price conveys shared-resource pressure. The resulting
-architecture therefore applies agentic control directly to the
-CHO/PDCP state machine at the control-epoch timescale, rather than to
-semantic orchestration, routing, or generic radio-resource scheduling.
+Our work adopts this capability-oriented interpretation of Agentic AI.
+It does not place an LLM in the real-time mobility-control loop.
+Instead, domain-specific mechanisms instantiate the capabilities
+required by the considered problem: recurrent state provides temporal
+memory, deterministic ephemeris acts as a physics-grounded reasoning
+tool, congestion prices provide lightweight multi-agent coordination,
+and a dual controller supplies goal-oriented reliability regulation.
+The resulting architecture targets a protocol-control timescale at
+which predictable orbital dynamics and structured radio states can be
+exploited directly, without requiring unrestricted semantic reasoning
+or an LLM in the real-time control loop.
 
 % =====================================================================
 \section{System Model}
@@ -482,20 +603,33 @@ dwell condition $t-t^{\mathrm{sw}}_i\ge T_{\mathrm{dwell}}$ holds, where
 $t^{\mathrm{sw}}_i$ is the epoch of the last completed switch.
 \end{itemize}
 If the target becomes invisible while the UE is in P or D, the preparation is
-lost and the UE returns to S. After $T_{\mathrm{sw}}$ epochs in W, the switch
-succeeds with probability
+lost and the UE returns to S. During the \textsc{Switching} state, the source
+satellite remains the serving data leg until the switching outcome is resolved,
+while the target preparation reservation is retained. Hence, entering W does not
+immediately change the serving data path.
+
+After $T_{\mathrm{sw}}$ epochs in W, the switch succeeds with probability
 \begin{equation}
-p^{\mathrm{HO}}_i=p_0\,q_{ic_i}(t)\,\exp\!\big(-[\Phi_{c_i}(t)-1]^+\big),
+p^{\mathrm{HO}}_i(t)
+=
+p_0\,q_{ic_i}(t)\,
+\exp\!\big(-[\Phi_{c_i}(t-1)-1]^+\big),
 \label{eq:hosuccess}
 \end{equation}
-which degrades with poor target quality and target congestion. On success,
-$c_i$ becomes the new serving satellite and the UE enters C for
+where $\Phi_{c_i}(t-1)$ is the most recently realized requested pressure
+available when the switching outcome is resolved. The one-epoch offset follows
+from the causal control sequence: the switching outcome is resolved before the
+scheduler computes the requested pressure of the current epoch. The probability
+therefore decreases with poor target-link quality and recently observed target
+congestion.
+
+On success, $c_i$ becomes the new serving satellite and the UE enters C for
 $T_{\mathrm{cd}}$ epochs; otherwise it returns to S on the old serving
 satellite. A successful switch back to the previous serving satellite within
-$T_{\mathrm{pp}}$ epochs is counted as a ping-pong.
-% [확인] Switching 중에도 source 위성의 data leg는 계속 스케줄됩니다(make-before-break 추상화).
-%        실행 중단 비용은 eta_HO * C_HO와 (8)의 성공확률로만 반영됩니다. 리뷰 대비로 한 줄 명시 권장.
-% [확인] 서빙 위성이 시야에서 사라져도 자동 재접속(RLF 복구)은 없습니다 -> CHO가 완료될 때까지 서비스가 끊깁니다.
+$T_{\mathrm{pp}}$ epochs is counted as a ping-pong. Separate radio-link-failure
+reattachment is not modeled; if the source data leg becomes unavailable before
+the switching outcome is resolved, the corresponding service may experience an
+outage.
 
 \emph{Preparation admission.} CHO preparation consumes two separate
 resources of the target satellite: a data-plane reservation
@@ -508,32 +642,102 @@ rejected. Admission is therefore an explicit multi-UE contention.
 
 \begin{figure}[t]
 \centering
-\fbox{\parbox{0.92\columnwidth}{\centering\vspace{14mm}
-\todo{Fig.~1: CHO/PDCP state machine (S, P, D, W, C) with actions on the edges,
-timers $T_{\mathrm{prep}},T_{\mathrm{sw}},T_{\mathrm{cd}}$, dwell guard, admission, and
-success probability (8).}\vspace{14mm}}}
-\caption{Per-UE CHO and PDCP-duplication state machine.}
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+  >={Stealth[length=1.6mm]}, font=\footnotesize,
+  st/.style={circle, draw, thick, minimum size=10mm, inner sep=0pt, align=center},
+  tr/.style={->, thick},
+  lab/.style={font=\scriptsize, inner sep=1.2pt},
+  tm/.style={font=\scriptsize, text=black!55}]
+  \node[st, fill=black!4]   (S) at (0,0)       {S\\[-2pt]{\scriptsize Single}};
+  \node[st, fill=blue!8]    (P) at (3.0,1.35)  {P\\[-2pt]{\scriptsize Prep.}};
+  \node[st, fill=green!10]  (D) at (3.0,-1.35) {D\\[-2pt]{\scriptsize Dup.}};
+  \node[st, fill=orange!12] (W) at (6.0,0)     {W\\[-2pt]{\scriptsize Switch}};
+  \node[st, fill=black!4]   (C) at (3.0,-3.35) {C\\[-2pt]{\scriptsize Cool.}};
+  \node[tm, above right=-1mm and 0mm of P] {$T_{\mathrm{prep}}$};
+  \node[tm, right=0.5mm of W] {$T_{\mathrm{sw}}$};
+  \node[tm, right=0.5mm of C] {$T_{\mathrm{cd}}$};
+  % S <-> P
+  \draw[tr] (S) to[bend left=25] node[lab, above, pos=0.6, sloped] {$\textsc{Prep}_k$ (admitted)} (P);
+  \draw[tr] (P) to[bend left=8]  node[lab, above, pos=0.5, sloped] {Release} (S);
+  % P <-> D
+  \draw[tr] (P) to[bend left=20] node[lab, right] {DupOn} (D);
+  \draw[tr] (D) to[bend left=20] node[lab, left, pos=0.4] {DupOff} (P);
+  % D -> S
+  \draw[tr] (D) to[bend right=8] node[lab, below, pos=0.5, sloped] {Rollback} (S);
+  % commit
+  \draw[tr] (P) to[bend left=12]  node[lab, above right, pos=0.5] {Commit$^{\dagger}$} (W);
+  \draw[tr] (D) to[bend right=12] node[lab, below right, pos=0.5] {Commit$^{\dagger}$} (W);
+  % outcome of switching
+  \draw[tr] (W) to[bend left=22] node[lab, right, align=left, pos=0.55, xshift=0.5mm] {success\\w.p.\ $p^{\mathrm{HO}}_i$} (C);
+  \draw[tr] (C) to[bend left=22] node[lab, left, pos=0.55] {after $T_{\mathrm{cd}}$} (S);
+  \draw[tr, dashed] (W.north) to[out=95, in=90, looseness=1.5]
+        node[lab, above, pos=0.5] {failure: remain on source satellite} (S.north);
+  \draw[tr] (S) edge[loop left, looseness=5] node[lab, left] {\textsc{Stay}} (S);
+  \node[font=\scriptsize, align=left, anchor=north west] at (4.3,-3.0)
+    {$^{\dagger}$target visible and\\ \phantom{$^{\dagger}$}$t-t^{\mathrm{sw}}_i\ge T_{\mathrm{dwell}}$};
+\end{tikzpicture}%
+}
+\caption{Per-UE CHO and PDCP-duplication state machine. $\textsc{Prep}_k$ is
+subject to multi-UE admission; the timers $T_{\mathrm{prep}}$,
+$T_{\mathrm{sw}}$, and $T_{\mathrm{cd}}$ must elapse before leaving P, W, and C,
+respectively; a switch succeeds with probability~\eqref{eq:hosuccess}.
+Losing visibility of the target in P or D also returns the UE to S.}
 \label{fig:fsm}
 \end{figure}
 
 \subsection{Information Structure and Partial Observability}
 \label{sec:obs}
 
-The agents do not observe the physical state. Actor telemetry is delayed by
-$\tau_{\mathrm{obs}}$ epochs and corrupted by temporally correlated noise:
+The agents do not observe the complete physical state. Current geometric link
+availability is assumed to be known for the serving-link visibility indicator
+and candidate presence, whereas radio-quality, elevation, and load information
+provided to the actor is delayed by $\tau_{\mathrm{obs}}$ epochs. In addition,
+the observed SINR and load are corrupted by temporally correlated noise.
+Specifically,
 \begin{gather}
-\tilde\gamma^{\mathrm{dB}}_{i\ell}(t)=\gamma^{\mathrm{dB}}_{i\ell}(t-\tau_{\mathrm{obs}})+n_{i\ell}(t),\label{eq:telemetry}\\
-n_{i\ell}(t)=\rho_n n_{i\ell}(t-1)+\sigma_\gamma\sqrt{1-\rho_n^2}\,w'_{i\ell}(t),\notag
+\tilde\gamma^{\mathrm{dB}}_{i\ell}(t)
+=
+\gamma^{\mathrm{dB}}_{i\ell}(t-\tau_{\mathrm{obs}})
++n_{i\ell}(t),
+\label{eq:telemetry}\\
+n_{i\ell}(t)
+=
+\rho_n n_{i\ell}(t-1)
++\sigma_\gamma\sqrt{1-\rho_n^2}\,w'_{i\ell}(t),
+\notag\\
+\tilde\eta_{i\ell}(t)
+=
+\min\!\Big\{
+\eta_{\max},
+\max\!\big\{
+0,\,
+\eta_{i\ell}(t-\tau_{\mathrm{obs}})\,
+2^{n_{i\ell}(t)/10}
+\big\}
+\Big\},
+\notag\\
+\tilde\epsilon_{i\ell}(t)
+=
+\epsilon_{i\ell}(t-\tau_{\mathrm{obs}}),
+\notag\\
+\tilde\Phi_{i\ell}(t)
+=
+\big[
+\Phi_\ell(t-1-\tau_{\mathrm{obs}})
++n^\Phi_{i\ell}(t)
+\big]^+,
+\notag
 \end{gather}
-and analogously for the observed spectral efficiency
-$\tilde\eta_{i\ell}$ and the observed load
-$\tilde\Phi_{i\ell}=[\Phi_\ell(t-1-\tau_{\mathrm{obs}})+n^{\Phi}_{i\ell}(t)]^+$.
+where $n^\Phi_{i\ell}(t)$ follows the same AR(1) form with standard deviation
+$\sigma_\Phi$. Thus, elevation telemetry is delayed but is not subjected to an
+additional measurement-noise term in the present implementation.
 The local observation $\mathbf{o}_i(t)\in\mathbb{R}^{11+5+7K}$ contains
 (i) the queue length, head-of-line delay, arrival rate, reliability-class
 indicator, duplication flag, one-hot protocol state, and protocol timer;
 (ii) for the serving satellite: visibility, $\tilde\gamma$, $\tilde\eta$,
-elevation, and $\tilde\Phi$; and (iii) for each candidate: presence, a
-prepared-target flag, $\tilde\gamma$, $\tilde\eta$, elevation, $\tilde\Phi$,
+$\tilde\epsilon$, and $\tilde\Phi$; and (iii) for each candidate: presence, a
+prepared-target flag, $\tilde\gamma$, $\tilde\eta$, $\tilde\epsilon$, $\tilde\Phi$,
 and the observed SINR trend $\tilde\gamma(t)-\tilde\gamma(t-1)$.
 Agents do \emph{not} observe the remaining visibility time, the capacity
 multipliers $m_\ell$, the event realizations, the latent link regimes, or the
@@ -670,10 +874,12 @@ where $B^{\mathrm{use}}(t)$ denotes the volume of the original PDCP packet
 stream scheduled for transmission during epoch $t$, before packet-delivery
 errors are realized, and $B^{\mathrm{dup}}(t)$ denotes the additional
 transmission volume generated by sending a copy of that stream over the
-secondary leg. Hence, $C_{\mathrm{dup}}$ measures transmission redundancy
-rather than successfully delivered traffic. $C_{\mathrm{ctrl}}$ captures the resource and
-signalling overhead of mobility control: duplicated transmissions,
-reserved-but-unused target resources, and handover executions.
+secondary leg. Hence, $C_{\mathrm{dup}}$ measures transmission redundancy rather than
+successfully delivered traffic. $C_{\mathrm{ctrl}}$ is a resource- and
+mobility-control-cost proxy comprising duplicated transmissions, target
+preparation reservations, and handover executions. It does not explicitly
+charge the number of preparation signalling messages; this distinction is
+revisited in Section~\ref{sec:limitations}.
 
 \subsection{Constrained Decentralized POMDP}
 
@@ -737,7 +943,8 @@ pressure without exchanging UE actions. Finally, a training-time reliability
 multiplier provides explicit \emph{goal regulation}.
 
 These capabilities are introduced incrementally to form the M1--M5 model
-family in Table~\ref{tab:models}. The resulting ladder is an architectural
+family in Table~\ref{tab:models}; Fig.~\ref{fig:arch} shows the resulting
+agent. The resulting ladder is an architectural
 decomposition used for capability-structured evaluation, not an assumption
 that performance must improve monotonically from M1 to M5. Each variant is
 trained independently in the same environment with the same base reward,
@@ -759,23 +966,70 @@ Model & Capability added & Actor input & Training reward\\
 M1 & Perception (core) & $\mathbf{o}_i$ & $r$\\
 M2 & + Memory & $[\mathbf{o}_i,\mathbf{h}_i]$ & $r$\\
 M3 & + Reasoning & $[\mathbf{o}_i,\mathbf{h}_i,\boldsymbol\phi_i]$ & $r$\\
-M4 & + Coordination & $[\mathbf{o}_i,\mathbf{h}_i,\boldsymbol\phi_i,\mathbf{y}_i]$ & $r$\\
-M5 & + Goal regulation & $[\mathbf{o}_i,\mathbf{h}_i,\boldsymbol\phi_i,\mathbf{y}_i,\mu/\mu_{\max}]$ & $r_\mu$\\
+M4 & + Coordination & $[\mathbf{o}_i,\mathbf{h}_i,\boldsymbol\phi_i,\bar{\mathbf{y}}_i]$ & $r$\\
+M5 & + Goal regulation & $[\mathbf{o}_i,\mathbf{h}_i,\boldsymbol\phi_i,\bar{\mathbf{y}}_i,\mu/\mu_{\max}]$ & $r_\mu$\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\fbox{\parbox{0.92\columnwidth}{\centering\vspace{16mm}
-\todo{Fig.~2: Per-UE agent. Perception (masked telemetry) $\to$ Memory (GRU) $\to$
-Reasoning (ephemeris lookahead features) $\to$ Coordination (satellite prices)
-$\to$ Goal regulation ($\mu$) $\to$ shared actor $\to$ action. Training side:
-centralized critic, price coordinator, dual controller.}\vspace{16mm}}}
-\caption{Architecture of the capability-structured agent (execution: solid;
-training only: dashed).}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  >={Stealth[length=1.5mm]}, font=\footnotesize,
+  box/.style={draw, thick, rounded corners=2pt, align=center, inner sep=3pt},
+  mod/.style={box, text width=5.0cm, minimum height=0.66cm, fill=#1},
+  rbox/.style={box, text width=4.0cm},
+  ar/.style={->, thick},
+  tra/.style={->, thick, dashed, black!65},
+  lab/.style={font=\scriptsize, inner sep=1pt}]
+  % ---------------- environment ----------------
+  \node[box, fill=black!4, minimum width=2.6cm, minimum height=5.4cm] (env) at (0,0) {};
+  \node[font=\footnotesize\bfseries] at (0,2.3) {LEO network};
+  \node[align=center, font=\scriptsize] at (0,1.2) {$L$ satellites\\(ephemeris,\\capacity, load)};
+  \node[align=center, font=\scriptsize] at (0,-0.4) {$N$ UEs with\\CHO/PDCP state\\machine (Fig.~\ref{fig:fsm})};
+  \node[align=center, font=\scriptsize] at (0,-1.95) {hidden regimes,\\disturbances};
+  % ---------------- per-UE agent ----------------
+  \node[mod=black!4]  (per) at (7.1, 2.1)  {\textbf{M1} Perception: masked telemetry $\mathbf{o}_i$};
+  \node[mod=blue!7]   (mem) at (7.1, 1.05) {\textbf{M2} Memory: GRU state $\mathbf{h}_i$};
+  \node[mod=violet!7] (rea) at (7.1, 0.0)  {\textbf{M3} Reasoning: lookahead $\boldsymbol\phi_i$};
+  \node[mod=orange!9] (coo) at (7.1,-1.05) {\textbf{M4} Coordination: prices $\bar{\mathbf{y}}_i$};
+  \node[mod=green!9]  (goa) at (7.1,-2.1)  {\textbf{M5} Goal regulation: $\mu/\mu_{\max}$};
+  \node[box, fill=black!10, text width=1.7cm, minimum height=1.3cm] (act) at (11.2,1.05)
+       {Shared actor\\$\pi_\theta(a\,|\,\mathbf{z}_i,\mathbf{m}_i)$};
+  \foreach \n in {per, mem, rea, coo, goa} \draw[ar] (\n.east) -- (act.west);
+  \begin{scope}[on background layer]
+    \node[draw, thick, rounded corners=4pt, fill=black!1.5, fit=(per)(goa)(act),
+          inner xsep=3mm, inner ysep=3mm] (agent) {};
+  \end{scope}
+  \node[font=\footnotesize\bfseries, anchor=south west] at (agent.north west) {Per-UE agent $i$ (decentralized execution)};
+  % ---------------- right column ----------------
+  \node[rbox, dashed, fill=white] (crit) at (15.1, 1.75)
+       {Centralized critic $V_\psi(\mathbf{s}^{c})$\\{\scriptsize (joint observations, true load)}\\PPO + GAE update};
+  \node[rbox, fill=orange!9] (price) at (15.1,-0.95)
+       {Satellite congestion price\\$y_\ell\leftarrow\big[y_\ell+\alpha_y(U_\ell-1)\big]_0^{y_{\max}}$};
+  \node[rbox, dashed, fill=white] (dual) at (15.1,-2.1)
+       {Dual controller (per rollout)\\$\mu\leftarrow\big[\mu+\alpha_\mu(\bar C_{\mathrm{out}}-\varepsilon_{\mathrm{out}})\big]_0^{\mu_{\max}}$};
+  % ---------------- arrows ----------------
+  \draw[ar] (env.east |- per) -- node[lab, above] {delayed, noisy telemetry} (per.west);
+  \draw[ar] (env.east |- mem) -- node[lab, above] {own outcomes $\boldsymbol\zeta_i$} (mem.west);
+  \draw[ar] (env.east |- rea) -- node[lab, above] {ephemeris} (rea.west);
+  \draw[ar] (price.west) -- node[lab, above] {$\bar{\mathbf{y}}_i$ (one-epoch lag)} (price.west -| coo.east);
+  \draw[tra] (dual.west) -- node[lab, above] {$\mu$ (frozen after training)} (dual.west -| goa.east);
+  \draw[ar] (act.north) -- ++(0,1.95) -| node[lab, above, pos=0.25]
+        {action $a_i$: stay / prepare / duplicate / commit / release / rollback} (env.north);
+  \draw[ar] (env.south) -- ++(0,-0.5) -| node[lab, below, pos=0.25]
+        {aggregate intended demand $U_\ell$ (serving + preparation + duplication)} ($(price.east)+(0.4,0)$) -- (price.east);
+\end{tikzpicture}%
+}
+\caption{Architecture of the capability-structured agent. Each UE runs the
+same actor on the concatenation $\mathbf{z}_i$ of the capability outputs
+available in its variant (M1: $\mathbf{o}_i$; M2 adds $\mathbf{h}_i$; M3 adds
+$\boldsymbol\phi_i$; M4 adds $\bar{\mathbf{y}}_i$; M5 adds $\mu/\mu_{\max}$).
+Solid: execution; dashed: training only. Satellites broadcast only the scalar
+prices.}
 \label{fig:arch}
-\end{figure}
+\end{figure*}
 
 \subsection{Perception and Core Decision Making (M1)}
 
@@ -822,7 +1076,14 @@ first action $a$, the planner evaluates a small library $\Pi_i(a)$ of
 protocol-consistent plans of length $H$ (e.g., $\textsc{Prep}_k$--wait--$\textsc{Commit}$;
 $\textsc{Prep}_k$--wait--$\textsc{DupOn}$--$\textsc{Commit}$; $\textsc{Stay}$),
 padded with $\textsc{Stay}$, by rolling the UE's own protocol state machine
-forward. The future SINR of link $(i,\ell)$ is extrapolated from the
+forward. For tractability, this hypothetical rollout propagates protocol
+timers deterministically. Once a hypothetical \textsc{Commit} satisfies the
+dwell and predicted-visibility conditions, completion of the corresponding
+switch is treated as successful in the lookahead. Consequently, the stochastic
+handover-success model in \eqref{eq:hosuccess} is realized by the environment
+but is not explicitly sampled or averaged inside the analytical planner.
+
+The future SINR of link $(i,\ell)$ is extrapolated from the
 \emph{observed} SINR and the ephemeris-predicted range,
 \begin{equation}
 \hat\gamma^{\mathrm{dB}}_{i\ell}(t+\tau)=\tilde\gamma^{\mathrm{dB}}_{i\ell}(t)-20\log_{10}\frac{d_{i\ell}(t+\tau)}{d_{i\ell}(t)},
@@ -837,15 +1098,36 @@ J_i(a)=\min_{\varsigma\in\Pi_i(a)}\sum_{\tau=0}^{H-1}\xi^\tau\Big(\hat\delta_i(t
 +\ind_{\mathrm{coord}}\,\mathbf{y}(t)^{\mathsf T}\big[\hat{\mathbf{u}}_i(t+\tau\mid\varsigma)-\hat{\mathbf{u}}_i^{\textsc{Stay}}(t+\tau)\big]^+\Big),
 \label{eq:plancost}
 \end{multline}
-where $\ind_{\mathrm{coord}}=1$ for M4 and M5 (and $0$ otherwise), and the second term prices the
-\emph{incremental} per-satellite resource demand $\hat{\mathbf{u}}_i$ of the plan
-relative to staying. The reasoner deliberately ranks plans by predicted
-service continuity rather than reproducing the complete training reward: in
-M3 the second term of~\eqref{eq:plancost} is absent, so resource and
-signalling overheads are learned through the MAPPO team reward rather than
-hard-coded into the planner, and M4 adds only the marginal congestion-price
-term, which lets the same geometry-aware reasoner account for the external
-resource pressure created by multi-UE decisions.
+where $\ind_{\mathrm{coord}}=1$ for M4 and M5 and is zero otherwise.
+Here, $\mathbf{y}(t)=[y_1(t),\ldots,y_L(t)]^{\mathsf T}$ denotes the
+\emph{raw} satellite-price vector maintained by the coordinator. Only entries
+corresponding to the UE's serving and hypothetical target satellites contribute
+to the inner product.
+
+The vector $\hat{\mathbf{u}}_i$ represents the planner's predicted
+per-satellite resource footprint of UE $i$. In the present implementation it
+contains the predicted serving-leg resource fraction, the secondary-leg
+resource fraction while duplicating, and the data-plane preparation reservation
+$\rho_{\mathrm{prep}}$ while a target reservation is active. The positive-part
+difference with $\hat{\mathbf{u}}_i^{\textsc{Stay}}$ therefore prices only the
+incremental resource footprint relative to remaining with the current serving
+satellite.
+
+Importantly, $\hat{\mathbf{u}}_i$ is not identical to the aggregate intended
+demand $U_\ell$ used by the satellite coordinator (Section~\ref{sec:coord}).
+The control-plane preparation-contention term $n_\ell^{\mathrm{req}}/M$ is
+included in $U_\ell$ when the satellite price is updated, but is not
+explicitly inserted into the single-UE hypothetical demand vector. Its effect
+therefore reaches the reasoner indirectly through the broadcast congestion
+price.
+
+The reasoner deliberately ranks plans primarily by predicted service
+continuity rather than reproducing the complete MAPPO training reward. In M3,
+the second term of \eqref{eq:plancost} is absent, so resource and
+mobility-control costs are learned through the team reward rather than
+hard-coded into the planner. M4 and M5 add the marginal raw-price term, allowing
+the same geometry-aware lookahead to account for recently observed shared
+resource pressure.
 
 Let $J_i^{\min}$ and $J_i^{\max}$ be the minimum and maximum of $J_i(a)$ over
 the feasible actions. The reasoning feature is
@@ -865,6 +1147,7 @@ future events, hidden regimes, true capacity multipliers, or the states of
 other UEs.
 
 \subsection{Coordination: Congestion Prices (M4)}
+\label{sec:coord}
 
 UEs compete for preparation slots, reservations, and data capacity, but
 exchanging intentions between UEs is impractical. M4 coordinates them through
@@ -880,25 +1163,51 @@ projected subgradient ascent,
 y_\ell(t+1)=\Big[y_\ell(t)+\alpha_y\big(U_\ell(t)-1\big)\Big]_0^{y_{\max}}.
 \label{eq:price}
 \end{equation}
-Prices rise while demand exceeds capacity and decay otherwise; they are reset
-at the start of each episode and are not learned. Each UE receives the
-normalized prices of its serving satellite and its $K$ candidates,
-$\mathbf{y}_i=[y_{p_i},y_{c_{i1}},\dots,y_{c_{iK}}]/y_{\max}$, which enter both the
-actor input and the reasoning cost~\eqref{eq:plancost}. The coordinator never
-allocates actions: decisions remain fully decentralized, and the price is
-observed with a one-epoch lag. The signalling cost is one scalar per satellite
-and epoch. The price should therefore be interpreted as a compressed
-coordination context rather than a centralized allocation command: it does
-not reveal individual UE states, actions, queues, or future events, and
-communicates only whether the aggregate intended demand has recently
-exceeded the normalized satellite resource level.
+Prices rise while intended demand exceeds the normalized resource level and
+decay otherwise; they are reset at the start of each episode and are not
+learned. The price produced at the end of epoch $t$ is used only for the next
+decentralized decision, so coordination is causal and one-epoch delayed.
+
+For the actor, UE $i$ receives the normalized local price feature
+\begin{equation}
+\bar{\mathbf{y}}_i(t)
+=
+\frac{
+[y_{p_i}(t),y_{c_{i1}}(t),\ldots,y_{c_{iK}}(t)]
+}{y_{\max}}.
+\end{equation}
+In contrast, the analytical lookahead in \eqref{eq:plancost} uses the raw
+prices $y_\ell(t)$ rather than their normalized actor representation. This
+distinction reflects the implementation: normalization is used to provide a
+bounded neural-network input, whereas the raw price directly weights the
+planner's incremental resource demand.
+
+The coordinator never allocates actions: decisions remain decentralized, and
+the signalling required for coordination is one scalar price per satellite and
+control epoch. The price should therefore be interpreted as compressed
+coordination context rather than a centralized allocation command. It reveals
+neither individual UE states, actions, queues, nor future events, and conveys
+only the recent aggregate resource pressure seen by each satellite.
 
 \subsection{Goal Regulation: Primal--Dual Reliability Control (M5)}
 
-M5 addresses the Lagrangian problem~\eqref{eq:lagrangian}. After every
-rollout of $T_{\mathrm{roll}}$ epochs, the multiplier is updated by the
-following projected multiplier step on the realized outage ratio of the
-rollout,
+M5 addresses the Lagrangian problem~\eqref{eq:lagrangian}. The dual update uses
+the realized outage fraction over all active-UE opportunities in one rollout.
+For rollout index set $\mathcal{T}_{\mathrm{roll}}$, the implementation
+computes
+\begin{equation}
+\bar C^{\mathrm{roll}}_{\mathrm{out}}
+=
+\frac{
+\sum_{t\in\mathcal{T}_{\mathrm{roll}}}
+\sum_{i\in\Nset^{\mathrm{act}}(t)} o_i(t)
+}{
+\sum_{t\in\mathcal{T}_{\mathrm{roll}}}
+|\Nset^{\mathrm{act}}(t)|
+}.
+\end{equation}
+After every rollout of $T_{\mathrm{roll}}$ epochs, the multiplier is updated
+by the projected step
 \begin{equation}
 \mu\leftarrow\Big[\mu+\alpha_\mu\big(\bar C^{\mathrm{roll}}_{\mathrm{out}}-\varepsilon_{\mathrm{out}}\big)\Big]_0^{\mu_{\max}},
 \label{eq:dual}
@@ -955,90 +1264,581 @@ per-UE computations are mutually independent and can be executed in
 parallel. Coordination requires only one congestion price per satellite and
 epoch, and the M5 reliability multiplier introduces no execution-time
 inter-UE signalling.
-\todo{After latency\_bench: add ``Measured on a single CPU thread, the decision
-latency per epoch for all $N=12$ UEs is \ldots\ ms, well below $\Delta=1$\,s.''}
+Measured on a single CPU thread of a desktop processor with an unoptimized
+Python/NumPy implementation, the mean actor inference time per epoch for all
+$N=12$ UEs is $0.24$--$0.44$\,ms, and the analytical reasoner adds
+$19.6$--$21.3$\,ms (95th percentile at most $26.3$\,ms). The total decision
+latency of M3--M5 is thus at most $21.7$\,ms on average ($26.8$\,ms at the 95th
+percentile), i.e., about $1.8$\,ms per UE, which is more than an order of
+magnitude below the $\Delta=1$\,s control epoch.
+% [확인] CPU 모델명을 넣으세요 (예: Intel Core i7-12700). 값은 outputs/latency/latency.csv 기준.
 % [확인] plan 수 상한은 reasoning.py의 _plans 기준입니다: SINGLE에서 STAY + 후보당 2개(2K+1),
 %        PREPARED/DUPLICATING에서 4개. 최종 지연 수치는 latency_bench 결과로 교체하세요.
 
 % =====================================================================
-%  References (verify every entry before submission)
+\section{Simulation Setup}
+\label{sec:setup}
+% =====================================================================
+
+\subsection{Training}
+All variants use the environment and parameters of Table~\ref{tab:params}.
+Each variant is trained for $I=2000$ iterations with five independent
+training seeds $\{7,8,9,10,11\}$; the seed determines both the network
+initialization and the training-environment realization. The five M1--M5
+variants therefore comprise $25$ independently trained policies. Training
+episodes contain the randomized disturbance schedule of
+Section~\ref{sec:nonstat}; the compound-stress pattern is never used for
+training.
+
+\subsection{Evaluation Protocol}
+Every trained policy is evaluated on five held-out evaluation seeds with
+$40$ episodes each, under two conditions: \emph{nominal} (randomized events
+drawn as in training) and \emph{compound stress}
+(Section~\ref{sec:nonstat}). The episode streams of different evaluation
+seeds are disjoint, and all methods are evaluated on identical episode
+streams, which yields paired comparisons. Actions are sampled from the
+stochastic policies; congestion prices evolve online and are reset at the
+start of each episode, and the multiplier of M5 is frozen at its trained
+value. For a learned variant, each training seed is first averaged over the
+five evaluation seeds, and the mean and the Student-$t$ $95\%$ confidence
+interval (CI) are computed across the five training seeds, so the CI
+reflects training variability. Rule-based baselines have no training seed;
+their CI is computed across the evaluation seeds and mainly reflects the
+difficulty of the individual scenarios. Besides the realized outage ratio,
+we report the service deficit, the number of handover executions per epoch
+(summed over the $N$ UEs), the ping-pong ratio (ping-pongs per successful
+handover), the resource cost $C_{\mathrm{dup}}+\eta_{\mathrm{prep}}C_{\mathrm{prep}}+\eta_{\mathrm{HO}}C_{\mathrm{HO}}$,
+and the \emph{common reward} $r=-C_{\mathrm{def}}-\lambda C_{\mathrm{ctrl}}$
+of~\eqref{eq:reward}. The common reward is used for all methods, including
+M5, whose training reward additionally contains the Lagrangian term.
+% [확인] resource cost = C_ctrl (control cost)입니다. 표의 "Resource"와 common reward의 C_ctrl가 같은 양입니다.
+
+\subsection{Baselines}
+All baselines observe the same delayed and noisy telemetry and are subject
+to the same action masks and admission rules as the learned agents.
+\begin{itemize}
+\item \emph{CHO (A3/TTT)}: a 3GPP-inspired conditional handover. The best
+observed candidate is prepared when it exceeds the serving satellite by
+$O_{\mathrm{prep}}=1$\,dB; the prepared target is executed when it exceeds
+the serving satellite by $O_{\mathrm{exec}}$ for $T_{\mathrm{TTT}}$
+consecutive epochs, and it is released after it falls below the serving
+satellite by $1$\,dB for three epochs. $O_{\mathrm{exec}}\in\{2,3,4\}$\,dB
+and $T_{\mathrm{TTT}}\in\{1,2,3\}$ epochs were tuned for the common reward
+on three validation seeds whose episodes are disjoint from all evaluation
+episodes, and then frozen ($O_{\mathrm{exec}}=2$\,dB, $T_{\mathrm{TTT}}=1$).
+The selected offset is the smallest value of the grid, and $T_{\mathrm{TTT}}=1$
+is the smallest feasible value at $\Delta=1$\,s.
+\item \emph{CHO (A3/TTT)+Dup}: the tuned CHO rule, additionally activating
+duplication while a target is prepared and the serving SINR is below a
+threshold tuned in the same way ($6$\,dB, selected from $\{2,4,6\}$\,dB).
+\item \emph{Max-SINR}: prepares the best observed candidate when it exceeds
+the serving satellite by $1$\,dB and executes as soon as allowed, without
+duplication.
+\item \emph{Always-Dup}: always prepares the best observed candidate,
+activates duplication, and executes.
+\item \emph{Threshold-Dup}: prepares the best candidate when the serving SINR
+falls below $4$\,dB, activates duplication, and executes when the target
+exceeds the serving satellite by $1$\,dB.
+\end{itemize}
+
+% =====================================================================
+\section{Results}
+\label{sec:results}
+% =====================================================================
+
+\begin{figure}[t]
+\centering
+\figinclude{fig/pdf/fig16_training_curves.pdf}
+\caption{Training convergence in terms of the common reward
+$r=-C_{\mathrm{def}}-\lambda C_{\mathrm{ctrl}}$ (moving average over $50$
+iterations, mean over five training seeds). M5 is trained on the Lagrangian
+reward $r_\mu$ but is shown with the common reward for comparability.}
+\label{fig:training}
+\end{figure}
+
+\subsection{Training Convergence}
+Fig.~\ref{fig:training} shows the common reward during training. All
+variants improve from approximately $-0.13$ to $-0.07$ within the first few
+hundred iterations and then refine slowly under the annealed learning rates.
+Averaged over the last $100$ iterations, M1 attains the highest training common
+reward ($-0.067$), M2, M4, and M5 reach about $-0.072$, and M3 reaches $-0.075$;
+this ordering mirrors the common reward on the held-out scenarios
+(Table~\ref{tab:main}). M5 is not trained on the common reward but on the
+Lagrangian reward $r_\mu$, whose logged value additionally contains the
+reliability penalty $\mu(C_{\mathrm{out}}-\varepsilon_{\mathrm{out}})$ and is
+therefore not comparable across variants; in terms of the common reward, M5
+is on par with M2 and M4 while being markedly more efficient in mobility and
+resource usage. Because each training seed also defines a different
+training-environment realization, the curves are compared qualitatively, and
+the variants are compared quantitatively only on the common held-out
+evaluation scenarios.
+
+\begin{table*}[t]
+\centering
+\caption{Performance under nominal and compound-stress conditions (mean $\pm$ 95\% CI half-width). Learned models: CI across $5$ independently trained policies, each evaluated on $5$ evaluation seeds $\times$ $40$ episodes. Heuristics: CI across the $5$ evaluation seeds. HO executions are counted per control epoch over all $N=12$ UEs; the ping-pong ratio is relative to successful handovers; common reward $=-C_{\mathrm{def}}-\lambda C_{\mathrm{ctrl}}$. Bold: best value in each column and condition; underlined: best learned variant where a rule-based scheme is best; shaded: full agentic stack (M5). Threshold-Dup attains the lowest handover counts only because it rarely hands over, at the cost of the highest outage.}
+\label{tab:main}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llcccccc@{}}
+\toprule
+ & Method & Outage $\downarrow$ & Deficit $\downarrow$ & HO exec./epoch $\downarrow$ & Ping-pong $\downarrow$ & Resource ($\times10^{-3}$) $\downarrow$ & Common reward $\uparrow$\\
+\midrule
+\multirow{10}{*}{\rotatebox{90}{Nominal}} & M1 & $\mathbf{0.131}\,{\pm}\,\mathbf{0.008}$ & $\mathbf{0.065}\,{\pm}\,\mathbf{0.004}$ & $0.367\,{\pm}\,0.082$ & $0.118\,{\pm}\,0.028$ & $5.48\,{\pm}\,2.11$ & $\mathbf{-0.066}\,{\pm}\,\mathbf{0.005}$\\
+ & M2 & $0.144\,{\pm}\,0.021$ & $0.072\,{\pm}\,0.009$ & $0.288\,{\pm}\,0.067$ & $0.060\,{\pm}\,0.022$ & $6.65\,{\pm}\,3.77$ & $-0.073\,{\pm}\,0.010$\\
+ & M3 & $0.149\,{\pm}\,0.004$ & $0.074\,{\pm}\,0.002$ & $0.317\,{\pm}\,0.085$ & $0.061\,{\pm}\,0.017$ & $6.24\,{\pm}\,1.36$ & $-0.076\,{\pm}\,0.002$\\
+ & M4 & $0.143\,{\pm}\,0.013$ & $0.071\,{\pm}\,0.005$ & $0.345\,{\pm}\,0.115$ & $0.075\,{\pm}\,0.039$ & $7.70\,{\pm}\,4.83$ & $-0.073\,{\pm}\,0.006$\\
+ & \cellcolor{gray!15}\textbf{M5} & \cellcolor{gray!15}$0.137\,{\pm}\,0.006$ & \cellcolor{gray!15}$0.069\,{\pm}\,0.002$ & \cellcolor{gray!15}\underline{$0.224\,{\pm}\,0.046$} & \cellcolor{gray!15}\underline{$0.035\,{\pm}\,0.007$} & \cellcolor{gray!15}\underline{$4.35\,{\pm}\,1.19$} & \cellcolor{gray!15}$-0.070\,{\pm}\,0.003$\\
+\cmidrule(l){2-8}
+ & CHO (A3/TTT) & $0.345\,{\pm}\,0.107$ & $0.145\,{\pm}\,0.042$ & $0.363\,{\pm}\,0.015$ & $0.172\,{\pm}\,0.006$ & $\mathbf{2.64}\,{\pm}\,\mathbf{0.09}$ & $-0.146\,{\pm}\,0.042$\\
+ & CHO (A3/TTT)+Dup & $0.346\,{\pm}\,0.106$ & $0.146\,{\pm}\,0.042$ & $0.364\,{\pm}\,0.016$ & $0.173\,{\pm}\,0.006$ & $3.13\,{\pm}\,0.20$ & $-0.147\,{\pm}\,0.042$\\
+ & Max-SINR & $0.322\,{\pm}\,0.096$ & $0.137\,{\pm}\,0.039$ & $0.515\,{\pm}\,0.013$ & $0.337\,{\pm}\,0.022$ & $3.30\,{\pm}\,0.07$ & $-0.138\,{\pm}\,0.039$\\
+ & Always-Dup & $0.390\,{\pm}\,0.096$ & $0.168\,{\pm}\,0.040$ & $0.690\,{\pm}\,0.007$ & $0.408\,{\pm}\,0.020$ & $171.89\,{\pm}\,4.39$ & $-0.211\,{\pm}\,0.039$\\
+ & Threshold-Dup & $0.429\,{\pm}\,0.093$ & $0.190\,{\pm}\,0.042$ & $\mathbf{0.089}\,{\pm}\,\mathbf{0.006}$ & $\mathbf{0.008}\,{\pm}\,\mathbf{0.002}$ & $9.01\,{\pm}\,1.04$ & $-0.192\,{\pm}\,0.042$\\
+\midrule
+\multirow{10}{*}{\rotatebox{90}{Stress}} & M1 & $\mathbf{0.194}\,{\pm}\,\mathbf{0.007}$ & $\mathbf{0.098}\,{\pm}\,\mathbf{0.004}$ & $0.384\,{\pm}\,0.080$ & $0.117\,{\pm}\,0.028$ & $5.75\,{\pm}\,2.28$ & $\mathbf{-0.100}\,{\pm}\,\mathbf{0.004}$\\
+ & M2 & $0.204\,{\pm}\,0.020$ & $0.105\,{\pm}\,0.009$ & $0.324\,{\pm}\,0.078$ & $0.066\,{\pm}\,0.023$ & $6.90\,{\pm}\,3.52$ & $-0.107\,{\pm}\,0.010$\\
+ & M3 & $0.208\,{\pm}\,0.007$ & $0.107\,{\pm}\,0.002$ & $0.352\,{\pm}\,0.079$ & $0.069\,{\pm}\,0.012$ & $6.48\,{\pm}\,0.86$ & $-0.109\,{\pm}\,0.002$\\
+ & M4 & $0.202\,{\pm}\,0.010$ & $0.104\,{\pm}\,0.004$ & $0.367\,{\pm}\,0.116$ & $0.075\,{\pm}\,0.037$ & $7.79\,{\pm}\,4.84$ & $-0.106\,{\pm}\,0.005$\\
+ & \cellcolor{gray!15}\textbf{M5} & \cellcolor{gray!15}$0.199\,{\pm}\,0.007$ & \cellcolor{gray!15}$0.103\,{\pm}\,0.003$ & \cellcolor{gray!15}\underline{$0.255\,{\pm}\,0.039$} & \cellcolor{gray!15}\underline{$0.040\,{\pm}\,0.009$} & \cellcolor{gray!15}\underline{$4.82\,{\pm}\,1.45$} & \cellcolor{gray!15}$-0.105\,{\pm}\,0.004$\\
+\cmidrule(l){2-8}
+ & CHO (A3/TTT) & $0.369\,{\pm}\,0.077$ & $0.171\,{\pm}\,0.033$ & $0.370\,{\pm}\,0.009$ & $0.163\,{\pm}\,0.011$ & $\mathbf{2.68}\,{\pm}\,\mathbf{0.05}$ & $-0.172\,{\pm}\,0.033$\\
+ & CHO (A3/TTT)+Dup & $0.373\,{\pm}\,0.082$ & $0.173\,{\pm}\,0.035$ & $0.370\,{\pm}\,0.012$ & $0.163\,{\pm}\,0.011$ & $3.94\,{\pm}\,0.24$ & $-0.173\,{\pm}\,0.035$\\
+ & Max-SINR & $0.352\,{\pm}\,0.077$ & $0.164\,{\pm}\,0.033$ & $0.531\,{\pm}\,0.013$ & $0.328\,{\pm}\,0.011$ & $3.38\,{\pm}\,0.07$ & $-0.165\,{\pm}\,0.033$\\
+ & Always-Dup & $0.414\,{\pm}\,0.087$ & $0.195\,{\pm}\,0.037$ & $0.702\,{\pm}\,0.007$ & $0.395\,{\pm}\,0.016$ & $168.22\,{\pm}\,4.26$ & $-0.237\,{\pm}\,0.036$\\
+ & Threshold-Dup & $0.457\,{\pm}\,0.075$ & $0.220\,{\pm}\,0.034$ & $\mathbf{0.101}\,{\pm}\,\mathbf{0.004}$ & $\mathbf{0.007}\,{\pm}\,\mathbf{0.002}$ & $17.64\,{\pm}\,1.30$ & $-0.224\,{\pm}\,0.034$\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\figinclude{fig/pdf/fig01_outage_nominal.pdf}
+\caption{Outage ratio of all methods in the nominal condition (means; 95\% CIs and compound-stress results are given in Table~\ref{tab:main}).}
+\label{fig:outage}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\figinclude{fig/pdf/fig13_m5_vs_cho.pdf}
+\caption{Relative change of M5 with respect to the tuned CHO (A3/TTT) rule in the nominal condition. Negative values are improvements.}
+\label{fig:m5cho}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\figinclude{fig/pdf/fig12_m5_vs_m1.pdf}
+\caption{Relative change of the full agentic stack (M5) with respect to the memoryless policy (M1) in the nominal condition (means over five trained policies). Negative values are improvements; all variants and compound-stress results are given in Table~\ref{tab:main}.}
+\label{fig:capability}
+\end{figure}
+
+\subsection{Comparison with Rule-Based Mobility Control}
+Table~\ref{tab:main} and Fig.~\ref{fig:outage} show that every learned
+variant achieves a much lower outage ratio than all rule-based schemes. In
+the nominal condition, the learned variants attain $0.131$--$0.149$, whereas
+the baselines attain $0.322$--$0.429$. Relative to the tuned CHO baseline
+(Fig.~\ref{fig:m5cho}), M5 reduces the outage ratio by $60\%$ ($0.137$ vs.\
+$0.345$), the service deficit by $52\%$, the ping-pong ratio by $79\%$, the
+number of failed handovers by $67\%$, and deadline violations and queue
+overflows by more than $50\%$; under compound stress, the outage reduction is $46\%$.
+The advantage is not an artefact of averaging: all $125$ policy--scenario
+pairs ($25$ trained policies $\times$ $5$ evaluation seeds) have a lower
+outage ratio than CHO in the same scenario, in both conditions. The wide CIs
+of the baselines stem from differences in scenario difficulty; in paired
+terms, the ratio between the outage of M5 and that of CHO stays within
+$0.38$--$0.42$ (nominal) and $0.52$--$0.56$ (stress) across the evaluation
+seeds. The price of this reliability is a moderately higher resource cost:
+CHO almost never duplicates and thus spends $2.6\times10^{-3}$ versus
+$4.3\times10^{-3}$ for M5. Adding a duplication trigger to CHO barely changes
+its behavior (duplication is active in $0.06\%$ of the time), which indicates
+that reliable use of duplication requires anticipating when a second leg is
+worth its cost, rather than a fixed SINR threshold.
+
+\subsection{Capability-Structured Comparison of M1--M5}
+Among the learned variants, reliability is similar, and the capabilities
+mainly change \emph{how} the agents achieve it (Fig.~\ref{fig:capability}
+and Table~\ref{tab:main}). The memoryless M1 attains the lowest outage ratio
+($0.131\pm0.008$) and the best common reward, but it does so with the most
+mobility actions. \emph{Memory} (M2) halves the ping-pong ratio ($-49\%$) and
+reduces handover executions by $21\%$ relative to M1, at the price of a
+$1.3$ percentage-point (pp) higher outage ratio, which is consistent with the
+agent learning to ride out transient degradations instead of reacting to
+every telemetry fluctuation. \emph{Reasoning} (M3) yields no measurable gain
+over M2 (outage $+0.5$\,pp, handover executions $+10\%$), although it has the
+smallest variance of the outage ratio across training seeds. Adding
+\emph{coordination} alone (M3$\to$M4) gives mixed results: the outage ratio
+decreases slightly, but handover executions and resource cost increase, and
+the variance across training seeds grows.
+
+The largest change occurs when \emph{goal regulation} is added (M4$\to$M5):
+handover executions decrease by $35\%$, the ping-pong ratio by $53\%$, the
+resource cost by $44\%$, and failed handovers by $32\%$, while the outage
+ratio also decreases slightly. At the same time, the variability across
+independently trained policies shrinks markedly: the CI half-width of the
+handover executions drops from $0.115$ to $0.046$ and that of the ping-pong
+ratio from $0.039$ to $0.007$. As a result, the full stack operates at a
+distinct point of the reliability--mobility trade-off (Fig.~\ref{fig:capability}):
+compared with M1, M5 performs $39\%$ fewer handover executions, has a $70\%$
+lower ping-pong ratio, a $21\%$ lower resource cost, and $19\%$ fewer failed
+handovers, for a $0.6$\,pp higher outage ratio whose CI overlaps that of M1.
+The same pattern holds under compound stress ($-34\%$, $-66\%$, and $-16\%$
+for handover executions, ping-pong ratio, and resource cost, respectively,
+at $+0.5$\,pp outage). We emphasize that the M1--M5 ladder is not monotone:
+the capabilities interact, and their benefit materializes in combination.
+
+\begin{table*}[t]
+\centering
+\caption{Within-policy coordination ablation: change caused by forcing the congestion price to zero at evaluation (price-zero minus normal), mean $\pm$ 95\% CI across $5$ trained policies, relative change, and number of policies with an increase.}
+\label{tab:ablation}
+\footnotesize
+\begin{tabular}{@{}llcccccc@{}}
+\toprule
+ & & \multicolumn{3}{c}{M4} & \multicolumn{3}{c}{\textbf{M5}}\\
+\cmidrule(lr){3-5}\cmidrule(l){6-8}
+ & Metric & $\Delta$ & Rel. & Incr. & $\Delta$ & Rel. & Incr.\\
+\midrule
+\multirow{4}{*}{Nominal} & HO executions per epoch & $+0.061\,{\pm}\,0.037$ & $+18\%$ & 5/5 & $+0.052\,{\pm}\,0.018$ & $+24\%$ & 5/5\\
+ & Ping-pong ratio & $+0.027\,{\pm}\,0.019$ & $+35\%$ & 5/5 & $+0.008\,{\pm}\,0.005$ & $+22\%$ & 5/5\\
+ & Resource cost ($\times10^{-3}$) & $+2.20\,{\pm}\,2.49$ & $+24\%$ & 5/5 & $+1.03\,{\pm}\,0.83$ & $+23\%$ & 5/5\\
+ & Outage ratio & $+0.0098\,{\pm}\,0.0065$ & $+7\%$ & 5/5 & $+0.0072\,{\pm}\,0.0069$ & $+5\%$ & 5/5\\
+\midrule
+\multirow{4}{*}{Stress} & HO executions per epoch & $+0.063\,{\pm}\,0.045$ & $+18\%$ & 5/5 & $+0.052\,{\pm}\,0.015$ & $+20\%$ & 5/5\\
+ & Ping-pong ratio & $+0.026\,{\pm}\,0.023$ & $+34\%$ & 5/5 & $+0.010\,{\pm}\,0.006$ & $+26\%$ & 5/5\\
+ & Resource cost ($\times10^{-3}$) & $+2.27\,{\pm}\,2.15$ & $+26\%$ & 5/5 & $+1.06\,{\pm}\,0.97$ & $+20\%$ & 5/5\\
+ & Outage ratio & $+0.0050\,{\pm}\,0.0052$ & $+2\%$ & 4/5 & $+0.0032\,{\pm}\,0.0062$ & $+2\%$ & 4/5\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\figinclude{fig/pdf/fig15_m5_price_removed.pdf}
+\caption{Degradation of M5 when the congestion price is forced to zero at evaluation (nominal; mean over five trained policies). Results for M4 and for compound stress are given in Table~\ref{tab:ablation}.}
+\label{fig:ablation}
+\end{figure}
+
+\subsection{Is the Coordination Signal Used?}
+Because the variants are trained independently, the M3$\to$M4 comparison
+alone cannot reveal whether the agents rely on the congestion price. We
+therefore evaluate each trained M4 and M5 policy a second time on the same
+episodes with the price forced to zero, which isolates the contribution of the
+signal within a fixed policy (Table~\ref{tab:ablation} and
+Fig.~\ref{fig:ablation}). Removing the price increases the handover
+executions by $18$--$24\%$, the ping-pong ratio by $22$--$35\%$, and the
+resource cost by $20$--$26\%$, in \emph{every one} of the ten policies and in
+both conditions. The outage ratio increases in all ten policies in the nominal
+condition ($+5$--$7\%$) and in eight of ten under stress, where the effect is
+small and its CI includes zero. The price is thus an operative input that
+all ten price-enabled M4/M5 policies have learned to exploit, mainly to
+suppress unnecessary mobility actions and redundant transmissions. A detailed single-policy
+diagnostic (training seed $7$, $5\times200$ episodes under compound stress)
+shows the underlying mechanism: with the price, the agent still prepares
+candidates but commits more selectively, i.e., the fraction of preparations
+that end in a switch decreases from $12.8\%$ to $9.4\%$ and more preparations
+are released without committing. Two caveats apply. First, zeroing the price
+at evaluation is a distribution shift for a policy trained with it, so the
+effect measures reliance on the signal rather than the value of training with
+it. Second, as noted above, adding coordination alone does not guarantee a
+better operating point; its benefit is consolidated when combined with goal
+regulation in M5.
+
+\begin{figure}[t]
+\centering
+\figinclude{fig/pdf/fig09_prep_to_commit.pdf}
+\caption{Percentage of CHO preparations that end in a switch (nominal). Further behavioral metrics are given in Table~\ref{tab:extended}.}
+\label{fig:behavior}
+\end{figure}
+
+\subsection{How Do the Agents Use Conditional Handover?}
+Fig.~\ref{fig:behavior} and Table~\ref{tab:extended} reveal that the learned
+agents use the CHO procedure in a qualitatively different way from the rule.
+The tuned CHO rule stays in $87.8\%$ of its decisions and, once it prepares a
+target, executes the switch in $73\%$ of the cases; it holds a preparation for
+$5.3$ epochs on average, and $49\%$ of its preparation requests are rejected
+because many UEs request the same satellite at the same time. The learned
+agents instead treat a preparation as a short-lived \emph{option}. M5 issues a
+preparation in $38\%$ of its decisions and releases most of them, so that only
+$6.3\%$ of the preparations end in a switch; a preparation is held for only
+$1.3$ epochs, i.e., little longer than the preparation timer. This
+prepare-broadly, commit-selectively behavior is progressively reinforced
+along the capability ladder (prepare-to-commit ratio of $18.9\%$ for M1,
+$9.7$--$13.5\%$ for M2--M4, and $6.3\%$ for M5) and is accompanied by fewer
+admission conflicts: the preparation rejection rate falls from $35\%$ (M1) to
+$20\%$ (M5), compared with $49\%$ for CHO, which is consistent with the agents
+learning to avoid contended targets. PDCP duplication, in contrast, is used
+very sparingly by all learned variants (active $0.2$--$0.6\%$ of the time),
+whereas activating it indiscriminately (Always-Dup, $22.8\%$) degrades every
+metric; under the present cost weights, the agents learn that the resource
+cost of a second leg is rarely justified. The prepare-and-release behavior
+comes at a price in control-plane signalling: M5 issues $4.6$ preparation
+requests per epoch, compared with $1.0$ for CHO. Since the reward charges the
+reserved resources but not the number of signalling messages, this overhead
+is not penalized during training and is discussed as a limitation in
+Section~\ref{sec:limitations}.
+
+\begin{table*}[t]
+\centering
+\caption{Extended metrics under nominal conditions (means over five trained policies for learned variants and over five evaluation seeds for rule-based schemes; CIs omitted for readability). Counts per epoch are summed over the $N=12$ UEs or $L=6$ satellites. Bold: best value for metrics with a clear preference direction (behavioral descriptors such as prep.$\to$commit, holding time, duplication time, and utilization are not ranked); shaded: M5.}
+\label{tab:extended}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}llccccccccc@{}}
+\toprule
+ & Metric & M1 & M2 & M3 & M4 & \cellcolor{gray!15}\textbf{M5} & CHO & Max-SINR & Al.-Dup & Thr.-Dup\\
+\midrule
+\multirow{3}{*}{Service} & Packet delivery ratio (\%) & \textbf{93.1} & 92.3 & 92.1 & 92.4 & \cellcolor{gray!15}92.6 & 84.7 & 85.6 & 82.4 & 80.3\\
+ & Deadline-violation rate (\%) & \textbf{2.11} & 2.31 & 2.38 & 2.27 & \cellcolor{gray!15}2.23 & 4.67 & 4.34 & 5.63 & 7.54\\
+ & Queue-overflow ratio (\%) & \textbf{4.5} & 5.1 & 5.2 & 5.0 & \cellcolor{gray!15}4.9 & 10.3 & 9.8 & 11.6 & 11.8\\
+\midrule
+Mobility & HO failures per execution (\%) & \textbf{4.7} & 6.0 & 6.2 & 5.9 & \cellcolor{gray!15}6.2 & 11.6 & 11.2 & 9.9 & 10.1\\
+\midrule
+\multirow{4}{*}{Control plane} & Prep.\ requests per epoch & 3.45 & 4.04 & 3.68 & 3.83 & \cellcolor{gray!15}4.56 & 0.97 & 1.04 & 3.43 & \textbf{0.09}\\
+ & Prep.\ rejection (\%) & 35.0 & 24.6 & 25.7 & 28.1 & \cellcolor{gray!15}20.1 & 48.6 & 50.2 & 79.7 & \textbf{3.5}\\
+ & Prep.\ $\to$ commit (\%) & 18.9 & 9.7 & 11.7 & 13.5 & \cellcolor{gray!15}6.3 & 73.0 & 99.2 & 98.9 & 98.8\\
+ & Prep.\ holding time (epochs) & 2.52 & 1.62 & 1.84 & 1.82 & \cellcolor{gray!15}1.30 & 5.32 & 4.72 & 5.95 & 3.48\\
+\midrule
+Duplication & Duplication active time (\%) & 0.26 & 0.45 & 0.39 & 0.55 & \cellcolor{gray!15}0.22 & 0.00 & 0.00 & 22.83 & 1.12\\
+\midrule
+\multirow{3}{*}{Satellite load} & Mean utilization (\%) & 49.5 & 50.1 & 50.1 & 49.9 & \cellcolor{gray!15}50.6 & 36.0 & 38.0 & 50.9 & 40.6\\
+ & Mean peak requested pressure & \textbf{1.15} & 1.18 & 1.20 & 1.18 & \cellcolor{gray!15}1.17 & 1.35 & 1.33 & 1.44 & 1.56\\
+ & Overloaded satellites per epoch & \textbf{0.88} & 0.98 & 1.02 & 0.98 & \cellcolor{gray!15}0.98 & 1.12 & 1.14 & 1.58 & 1.38\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Service, Satellite Load, and Signalling}
+The reliability advantage translates directly into delivered traffic
+(Table~\ref{tab:extended}). The learned variants
+deliver $92.1$--$93.1\%$ of the arriving packets in the nominal condition and
+$85.3$--$86.2\%$ under compound stress, compared with $84.7\%$ and $78.6\%$ for
+CHO; deadline violations and queue overflows are roughly halved
+($2.1$--$2.4\%$ vs.\ $4.7\%$ and $4.5$--$5.2\%$ vs.\ $10.3\%$, respectively).
+A failed switch is also about half as likely per execution ($4.7$--$6.2\%$
+vs.\ $11.6\%$). The learned agents carry more traffic---the mean satellite
+utilization is about $50\%$ versus $36\%$ for CHO---and nevertheless lower the mean of the per-epoch peak requested pressure
+from $1.35$ to $1.15$--$1.20$ and reduce the number of overloaded satellites, i.e., they
+spread the load more evenly across the constellation slice. Under compound
+stress, the peak-pressure advantage persists ($1.23$--$1.29$ vs.\ $1.43$),
+whereas the number of overloaded satellites becomes similar to CHO because the
+disturbances force overload regardless of the association policy.
+
+\subsection{Robustness to Compound Stress}
+Under the compound-stress pattern, whose traffic-burst and blockage
+severities lie outside the training range, all learned variants remain far
+more reliable than the rule-based schemes (Table~\ref{tab:main}), and the
+efficiency advantages of M5 are preserved. However, the outage ratio of the
+learned variants increases by $5.9$--$6.4$\,pp, compared with $2.5$\,pp for CHO
+and $3.0$\,pp for Max-SINR. The learned policies thus retain a large absolute
+advantage but are more sensitive to out-of-distribution disturbances than the
+rules, and none of the capabilities provides a specific robustness gain.
+
+\begin{table}[t]
+\centering
+\caption{Decision latency per control epoch for all $N=12$ UEs (single CPU thread, unoptimized Python/NumPy; mean / 95th percentile).}
+\label{tab:latency}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Model & Actor (ms) & Reasoner (ms) & Total (ms)\\
+\midrule
+M1 & 0.24 / 0.33 & -- & 0.24 / 0.33\\
+M2 & 0.41 / 0.49 & -- & 0.41 / 0.49\\
+M3 & 0.43 / 0.52 & 19.6 / 25.1 & 20.1 / 25.5\\
+M4 & 0.44 / 0.52 & 21.0 / 25.7 & 21.5 / 26.2\\
+\textbf{M5} & 0.43 / 0.49 & 21.3 / 26.3 & 21.7 / 26.8\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Computational Cost}
+Table~\ref{tab:latency} reports the decision latency. The actor requires
+less than $0.5$\,ms per epoch for all UEs, and the analytical reasoner of
+M3--M5 dominates with about $20$\,ms, i.e., below $2$\,ms per UE, which is
+negligible compared with the $1$\,s control epoch even for an unoptimized
+single-threaded implementation.
+% [확인] CPU 모델명을 표 캡션 또는 본문에 추가하세요.
+
+% =====================================================================
+\section{Discussion and Limitations}
+\label{sec:limitations}
+% =====================================================================
+
+\emph{Reliability target.} Although M5 regulates the outage pressure during
+training, the outage ratio on the held-out scenarios ($0.137$) remains above
+the target $\varepsilon_{\mathrm{out}}=0.10$ for all variants. In addition,
+changing the frozen multiplier at evaluation hardly changes the behavior of
+M5. The dual controller should therefore be understood as a training-time
+regulator rather than as a goal-conditioned policy that adapts its operating
+point on demand; enforcing the constraint on unseen scenarios and training
+with randomized multipliers are open problems.
+
+\emph{Reasoning.} The ephemeris-based reasoner did not improve performance in
+our setting. Several implementation choices may contribute to this result.
+First, the planner extrapolates delayed and noisy radio telemetry. Second, its
+hypothetical protocol rollout treats a feasible handover completion
+deterministically, whereas the actual environment resolves the switch
+stochastically according to \eqref{eq:hosuccess}. Third, the single-UE
+hypothetical resource vector accounts for the data-plane preparation
+reservation but not the explicit control-slot contention term
+$n_\ell^{\mathrm{req}}/M$; the latter reaches the planner only indirectly
+through the congestion price. Finally, the recurrent memory may already capture
+part of the temporal structure that the lookahead attempts to expose. These
+observations suggest that using the planner as an action prior, incorporating an
+expected handover-success model, or explicitly representing preparation
+contention are natural directions for future study.
+
+\emph{Mechanism of goal regulation.} The consistent efficiency gain and the
+variance reduction from M4 to M5 are empirical observations; why the
+Lagrangian reward stabilizes the learned operating point is not yet
+understood and deserves further study.
+
+\emph{Signalling and duplication.} The reward charges reserved preparation
+resources but not the number of preparation messages. The learned
+prepare-and-release behavior therefore generates $3.5$--$4.7$ times more
+preparation requests than the CHO rule, and a message-level signalling cost
+should be added to confirm that the observed advantages persist when control
+signalling is explicitly priced. Moreover, the learned agents activate PDCP
+duplication only rarely under the present cost weights; the regimes in which
+duplication becomes worthwhile (e.g., stricter reliability classes or lower
+duplication cost) remain to be characterized.
+
+\emph{Model scope.} The study uses a stylized constellation slice with six
+satellites and twelve UEs, a fixed interference floor, a system-level
+protocol abstraction, and a fixed scheduler. Scalability to larger
+constellations and UE populations, explicit interference, and message-level
+protocol effects remain to be evaluated. Finally, the statistics rely on five
+independently trained policies per variant.
+
+% =====================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% =====================================================================
+
+We formulated the joint control of CHO preparation, PDCP duplication, and
+primary-satellite switching in a shared-capacity LEO network as a constrained
+Dec-POMDP and proposed a capability-structured agentic framework that
+instantiates perception, memory, reasoning, and coordination through
+lightweight, numerical mechanisms matched to LEO mobility, together with a
+training-time goal regulator. Across $25$ independently trained policies,
+every learned policy--scenario pair achieved lower outage than the tuned
+3GPP-inspired CHO rule. For M5, the mean outage reduction was $60\%$
+under nominal conditions and $46\%$ under compound stress. The full
+capability stack achieved reliability close to that of the simplest
+learned policy while reducing handover executions by $39\%$ and the
+ping-pong ratio by $70\%$ under nominal conditions, with markedly smaller
+variability across trained policies, and within-policy ablations showed
+that all ten price-enabled M4/M5 policies exploit the congestion price.
+A behavioral analysis showed that the agents use CHO preparations as
+short-lived options and commit only a small fraction of them, which reduces
+admission conflicts, raises the packet delivery ratio by about eight
+percentage points relative to the rule, and lowers the mean per-epoch peak requested pressure.
+The results also delimit the approach: the reasoning module did not help,
+the reliability target was not met on unseen scenarios, the learned policies
+were more sensitive to compound disturbances than the rules, and their
+prepare-and-release behavior increases control-plane signalling, which the
+present reward does not price. These findings
+indicate that agentic capabilities are most effective in combination, and
+they point to goal-conditioned regulation and planner-guided action selection
+as the most promising directions.
+
+% =====================================================================
+%  References (ordered by first citation; verify every entry before submission)
 % =====================================================================
 \begin{thebibliography}{99}
+
+% VERIFIED (reference list of the uploaded AERS PDF; DOI not verified)
 \bibitem{giordani2021ntn}
-M.~Giordani and M.~Zorzi, ``Non-terrestrial networks in the 6G era:
-Challenges and opportunities,'' \emph{IEEE Netw.}, vol.~35, no.~2,
-pp.~244--251, Mar. 2021.
-\bibitem{aers2026}
-J.~Shen, Z.~Lin, K.~Guo, R.~Ma, C.~Han, Y.~Sun, K.~An, M.~T.~Quasim,
-S.~Basheer, and Y.~He, ``Agentic AI for 6G satellite networks: Achieving
-scalable and low-latency resource scheduling with the AERS framework,''
-\emph{IEEE Netw.}, early access, 2026, doi: 10.1109/MNET.2026.3692763.
-\bibitem{thinkdo2026}
-H.~Cao, K.~Liu, L.~Tan, N.~Chen, X.~Cao, S.~He, and P.~Zhang, ``A Think-Do
-architecture for cognitive autonomy: LLM-driven agentic AI for sustainable
-resource orchestration in 6G satellite networks,'' \emph{IEEE Netw.},
-early access, 2026, doi: 10.1109/MNET.2026.3699359.
-\bibitem{edgegeneral2026}
-R.~Zhang \emph{et al.}, ``Toward edge general intelligence with agentic AI
-and agentification: Concepts, technologies, and future directions,''
-\emph{IEEE Commun. Surveys Tuts.}, vol.~28, pp.~4285--4318, 2026.
-% ---- Placeholders: complete from the actual PDFs before submission ----
+M.~Giordani and M.~Zorzi, ``Non-Terrestrial Networks in the 6G Era: Challenges and Opportunities,'' \emph{IEEE Netw.}, vol.~35, no.~2, pp.~244--251, 2021, doi: 10.1109/MNET.011.2000493.
+
+\bibitem{3gpp38811}
+3GPP, ``Study on New Radio (NR) to Support Non-Terrestrial Networks,'' TR 38.811 V15.4.0, 2020.
+
+% Title/venue/volume/pages VERIFIED from the Think-Do reference list (DOI not verified)
+\bibitem{fontanesi2026aisurvey}
+G.~Fontanesi \emph{et al.}, ``Artificial Intelligence for Satellite Communication: A Survey,'' \emph{IEEE Commun. Surveys Tuts.}, vol.~28, pp.~1381--1435, 2026, doi: 10.1109/COMST.2025.3534617.
+
 \bibitem{juan2022handover}
-\todo{verify \& complete} E.~Juan \emph{et al.}, ``Handover solutions for 5G low-Earth orbit satellite networks,'' IEEE Access, 2022.
-\bibitem{lee2023cho}
-\todo{verify \& complete} J.~Lee, W.~Lee, and J.-H.~Kim, ``Performance evaluation of location-based conditional handover scheme using LEO satellites,'' ICTC, 2023.
+E.~Juan, M.~Lauridsen, J.~Wigard, and P.~Mogensen, ``Handover Solutions for 5G Low-Earth Orbit Satellite Networks,'' \emph{IEEE Access}, vol.~10, pp.~93309--93325, 2022, doi: 10.1109/ACCESS.2022.3203189.
+
+\bibitem{ji2021mobility}
+S.~Ji, M.~Sheng, D.~Zhou, W.~Bai, Q.~Cao, and J.~Li, ``Flexible and Distributed Mobility Management for Integrated Terrestrial-Satellite Networks: Challenges, Architectures, and Approaches,'' \emph{IEEE Netw.}, vol.~35, no.~4, pp.~73--81, 2021, doi: 10.1109/MNET.011.2100070.
+
 \bibitem{zhang2021networkflow}
-\todo{verify \& complete} S.~Zhang \emph{et al.}, ``A network-flows-based satellite handover strategy for LEO satellite networks,'' IEEE WCL, 2021.
+S.~Zhang, A.~Liu, C.~Han, X.~Ding, and X.~Liang, ``A Network-Flows-Based Satellite Handover Strategy for LEO Satellite Networks,'' \emph{IEEE Wireless Commun. Lett.}, vol.~10, no.~12, pp.~2669--2673, 2021, doi: 10.1109/LWC.2021.3111680.
+
+\bibitem{lee2023locationcho}
+J.~Lee, W.~Lee, and J.-H.~Kim, ``Performance Evaluation of Location-Based Conditional Handover Scheme Using LEO Satellites,'' in \emph{Proc.\ International Conference on Information and Communication Technology Convergence (ICTC)}, 2023, pp.~1642--1644, doi: 10.1109/ICTC58733.2023.10393667.
+
 \bibitem{wu2024acceho}
-\todo{verify \& complete} J.~Wu \emph{et al.}, ``Accelerating handover in mobile satellite network,'' IEEE INFOCOM, 2024.
+J.~Wu, S.~Su, X.~Wang, J.~Zhang, and Y.~Gao, ``Accelerating Handover in Mobile Satellite Network,'' in \emph{Proc.\ IEEE INFOCOM}, 2024, pp.~531--540, doi: 10.1109/INFOCOM52122.2024.10621115.
+
 \bibitem{li2024skycastle}
-\todo{verify \& complete} J.~Li \emph{et al.}, ``SkyCastle: Taming LEO mobility to facilitate seamless and low-latency satellite Internet services,'' IEEE INFOCOM, 2024.
-\bibitem{wang2026gems}
-\todo{verify \& complete} GEMS (dual connectivity with temporal mobility evolution), 2026.
-\bibitem{liu2024marlhandover}
-\todo{verify \& complete} H.~Liu \emph{et al.}, ``A multi-agent deep reinforcement learning-based handover scheme for mega-constellation under dynamic propagation conditions,'' IEEE TWC, 2024.
-\bibitem{yang2024mafddqn}
-\todo{verify \& complete} F.~Yang \emph{et al.}, ``Multi-agent fingerprints-enhanced distributed intelligent handover algorithm in LEO satellite networks,'' IEEE TVT, 2024.
-\bibitem{yang2023dqnho}
-\todo{verify \& complete} J.~Yang \emph{et al.}, ``DQN-ALrM-based intelligent handover method for satellite-ground integrated network,'' IEEE TCCN, 2023.
-\bibitem{zhang2025oracle}
-\todo{verify \& complete} Safe learning for online NTN service provisioning, 2025.
-\bibitem{hrlleohandover}
-\todo{verify \& complete} ``Learning when and where to handover'' (hierarchical LEO handover).
-\bibitem{pupiales2021multiconnectivity}
-\todo{verify \& complete} C.~Pupiales \emph{et al.}, ``Multi-connectivity in mobile networks: Challenges and benefits,'' IEEE Commun. Mag., 2021.
-\bibitem{lopez2022multiconnectivity}
-\todo{verify \& complete} M.~Lopez \emph{et al.}, ``An empirical analysis of multi-connectivity between 5G terrestrial and LEO satellite networks,'' IEEE GLOBECOM Workshops, 2022.
-\bibitem{zheng2026agenticdrl}
-\todo{verify \& complete} Advanced DRL for agentic AI in wireless networks (survey), 2026.
-\bibitem{agentictutorial2026}
-\todo{verify \& complete} F.~Jiang \emph{et al.}, ``From large AI models to agentic AI: A tutorial on future intelligent communications,'' IEEE JSAC, 2026.
-\bibitem{saginagent2026}
-\todo{verify \& complete} Agentic LLM framework for SAGIN management, 2026.
-\bibitem{lemapppo2026}
-\todo{verify \& complete} LLM-enhanced MAPPO for cognitive satellite--terrestrial resource allocation, 2026.
-\bibitem{agenticmultipath2026}
-\todo{verify \& complete} Agentic intent-aware multipath routing and congestion control in LEO networks, 2026.
-\bibitem{agenticsiov2026}
-\todo{verify \& complete} Agentic task-oriented resource orchestration in satellite-assisted vehicular networks, 2026.
+J.~Li \emph{et al.}, ``SKYCASTLE: Taming LEO Mobility to Facilitate Seamless and Low-Latency Satellite Internet Services,'' in \emph{Proc.\ IEEE INFOCOM}, 2024, pp.~541--550, doi: 10.1109/INFOCOM52122.2024.10621390.
+
+\bibitem{pupiales2021mc}
+C.~Pupiales, D.~Laselva, Q.~De~Coninck, A.~Jain, and I.~Demirkol, ``Multi-Connectivity in Mobile Networks: Challenges and Benefits,'' \emph{IEEE Commun. Mag.}, vol.~59, no.~11, pp.~116--122, 2021, doi: 10.1109/MCOM.111.2100049.
+
+\bibitem{lopez2022empiricalmc}
+M.~Lopez, S.~B.~Damsgaard, I.~Rodriguez, and P.~Mogensen, ``An Empirical Analysis of Multi-Connectivity Between 5G Terrestrial and LEO Satellite Networks,'' in \emph{Proc.\ IEEE Globecom Workshops (GC Wkshps)}, 2022, pp.~1115--1120, doi: 10.1109/GCWkshps56602.2022.10008752.
+
+\bibitem{3gpp38821}
+3GPP, ``Solutions for NR to Support Non-Terrestrial Networks (NTN),'' TR 38.821 V16.2.0, 2023.
 
 \bibitem{3gpp38331}
-3GPP, ``NR; Radio Resource Control (RRC); Protocol specification,''
-3GPP TS~38.331.
+3GPP, ``NR; Radio Resource Control (RRC) Protocol Specification,'' TS 38.331 V19.1.0, 2025.
+
 \bibitem{3gpp38323}
-3GPP, ``NR; Packet Data Convergence Protocol (PDCP) specification,''
-3GPP TS~38.323.
+3GPP, ``NR; Packet Data Convergence Protocol (PDCP) Specification,'' TS 38.323 V19.1.0, 2025.
+
+\bibitem{yang2023dqn}
+J.~Yang, Z.~Xiao, H.~Cui, J.~Zhao, G.~Jiang, and Z.~Han, ``DQN-ALrM-Based Intelligent Handover Method for Satellite-Ground Integrated Network,'' \emph{IEEE Trans. Cogn. Commun. Netw.}, vol.~9, no.~4, pp.~977--990, 2023, doi: 10.1109/TCCN.2023.3262239.
+
+\bibitem{liu2024marlho}
+H.~Liu, Y.~Wang, P.~Li, and J.~Cheng, ``A Multi-Agent Deep Reinforcement Learning-Based Handover Scheme for Mega-Constellation Under Dynamic Propagation Conditions,'' \emph{IEEE Trans. Wireless Commun.}, vol.~23, no.~10, 2024, doi: 10.1109/TWC.2024.3407358.
+
+\bibitem{yang2024fingerprints}
+F.~Yang, W.~Wu, Y.~Gao, Y.~Sun, T.~Sun, and P.~Si, ``Multi-Agent Fingerprints-Enhanced Distributed Intelligent Handover Algorithm in LEO Satellite Networks,'' \emph{IEEE Trans. Veh. Technol.}, vol.~73, no.~10, 2024, doi: 10.1109/TVT.2024.3412287.
+
+\bibitem{wang2026gems}
+F.~Wang, H.~Yang, S.~Zhang, X.~He, L.~Zhu, and T.~Q.~S.~Quek, ``GEMS: GAT-Embedded Mobility for Dual Connectivity in Integrated Terrestrial and Non-Terrestrial Networks,'' \emph{IEEE Trans. Mobile Comput.}, early access, 2026, doi: 10.1109/TMC.2026.3681814.
+
+\bibitem{sapkota2026agentic}
+R.~Sapkota, K.~I.~Roumeliotis, and M.~Karkee, ``AI Agents vs. Agentic AI: A Conceptual Taxonomy, Applications and Challenges,'' \emph{Inf. Fusion}, vol.~126, Art.~no.~103599, 2026, doi: 10.1016/j.inffus.2025.103599.
+
+\bibitem{jiang2026tutorial}
+F.~Jiang, C.~Pan, K.~Wang, P.~Michiardi, O.~A.~Dobre, and M.~Debbah, ``From Large AI Models to Agentic AI: A Tutorial on Future Intelligent Communications,'' \emph{IEEE J. Sel. Areas Commun.}, vol.~44, pp.~3507--3540, 2026, doi: 10.1109/JSAC.2026.3660010.
+
+% Title/venue/volume/pages VERIFIED from the reference lists of the uploaded AERS and Think-Do PDFs (DOI not verified)
+\bibitem{zhang2026edgeagentic}
+R.~Zhang \emph{et al.}, ``Toward Edge General Intelligence With Agentic AI and Agentification: Concepts, Technologies, and Future Directions,'' \emph{IEEE Commun. Surveys Tuts.}, vol.~28, pp.~4285--4318, 2026, doi: 10.1109/COMST.2026.3651702.
+
+\bibitem{zheng2026agenticdrl}
+J.~Zheng \emph{et al.}, ``Advanced Deep Reinforcement Learning for Agentic AI and Their Applications in Wireless Network,'' \emph{IEEE Trans. Cogn. Commun. Netw.}, vol.~12, pp.~7522--7544, 2026, doi: 10.1109/TCCN.2026.3683896.
+
+% VERIFIED incl. DOI (reference list of the uploaded Think-Do PDF)
+\bibitem{ni2026llmleo}
+Z.~Ni, Z.~Hua, X.~Yang, R.~Zhang, S.~Wang, and G.~Pan, ``LLM-Aided Spectrum-Sharing LEO Satellite Communications,'' \emph{IEEE J. Sel. Areas Commun.}, vol.~44, pp.~2591--2605, 2026, doi: 10.1109/JSAC.2025.3643811.
+
+% VERIFIED (uploaded PDF)
+\bibitem{shen2026aers}
+J.~Shen \emph{et al.}, ``Agentic AI for 6G Satellite Networks: Achieving Scalable and Low-Latency Resource Scheduling With the AERS Framework,'' \emph{IEEE Netw.}, early access, 2026, doi: 10.1109/MNET.2026.3692763.
+
+\bibitem{xie2026agenticiov}
+Y.~Xie, Q.~Song, W.~Sun, L.~Guo, and A.~Jamalipour, ``Task-Oriented Agentic AI-Driven Resource Orchestration in Satellite-Assisted IoV,'' \emph{IEEE Trans. Cogn. Commun. Netw.}, vol.~12, 2026, doi: 10.1109/TCCN.2026.3714048.
+
+% VERIFIED (uploaded PDF)
+\bibitem{cao2026thinkdo}
+H.~Cao \emph{et al.}, ``A Think-Do Architecture for Cognitive Autonomy: LLM-Driven Agentic AI for Sustainable Resource Orchestration in 6G Satellite Networks,'' \emph{IEEE Netw.}, early access, 2026, doi: 10.1109/MNET.2026.3699359.
+
 \bibitem{yu2022mappo}
-C.~Yu, A.~Velu, E.~Vinitsky, J.~Gao, Y.~Wang, A.~Bayen, and Y.~Wu,
-``The surprising effectiveness of PPO in cooperative multi-agent games,''
-in \emph{Proc. NeurIPS Datasets and Benchmarks Track}, 2022.
+C.~Yu \emph{et al.}, ``The Surprising Effectiveness of PPO in Cooperative Multi-Agent Games,'' in \emph{Proc.\ NeurIPS Datasets and Benchmarks Track}, 2022.
+
 \bibitem{schulman2017ppo}
-J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford, and O.~Klimov,
-``Proximal policy optimization algorithms,'' arXiv:1707.06347, 2017.
+J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford, and O.~Klimov, ``Proximal Policy Optimization Algorithms,'' arXiv:1707.06347, 2017.
+
 \bibitem{schulman2016gae}
-J.~Schulman, P.~Moritz, S.~Levine, M.~Jordan, and P.~Abbeel,
-``High-dimensional continuous control using generalized advantage estimation,''
-in \emph{Proc. ICLR}, 2016.
+J.~Schulman, P.~Moritz, S.~Levine, M.~Jordan, and P.~Abbeel, ``High-Dimensional Continuous Control Using Generalized Advantage Estimation,'' in \emph{Proc.\ ICLR}, 2016.
+
 \end{thebibliography}
 
 \end{document}
