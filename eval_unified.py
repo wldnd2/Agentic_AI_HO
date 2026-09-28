@@ -63,6 +63,9 @@ MODEL_OVERRIDES = {
     "M5": [CFG / "full_agentic.yaml", CFG / "dual_mid_0005.yaml"],
     # Ablation: plain MAPPO (M1) trained with the M5 reliability Lagrangian only.
     "M1D": [CFG / "m1_dual.yaml", CFG / "dual_mid_0005.yaml"],
+    # Value-based MARL baseline (parameter-shared Double DQN + fingerprints),
+    # trained by train_madqn.py; evaluated greedily.
+    "MADQN": [],
 }
 SEED7_DIRS = {
     "M1": "m1_seed7", "M2": "m2_seed7", "M3": "m3_seed7",
@@ -85,6 +88,8 @@ T95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447,
 
 
 def weights_path(model: str, train_seed: int) -> Path:
+    if model == "MADQN":
+        return ROOT / "outputs" / "v3_anneal_2000_multiseed" / f"madqn_seed{train_seed}" / "madqn_weights.npz"
     if model not in SEED7_DIRS:  # new ablation models: every seed lives in the multiseed dir
         return ROOT / "outputs" / "v3_anneal_2000_multiseed" / f"{model.lower()}_seed{train_seed}" / "mappo_weights.npz"
     if train_seed == 7:
@@ -185,6 +190,25 @@ def run_job(job: dict) -> dict:
                 for key, value in output.info.items():
                     totals[key] += float(value)
                 done = output.done
+                steps += 1
+        result = summarize_metrics(totals, steps)
+    elif job["model"] == "MADQN":
+        from leo_mappo.madqn import MADQN
+        train_seed = job["train_seed"]
+        cfg = make_config([], job["condition"], job["eval_seed"], train_seed)
+        env = LEOMobilityEnv(cfg)
+        agent = MADQN.from_checkpoint(weights_path("MADQN", train_seed), train_seed)
+        rng = np.random.default_rng(7000 + job["eval_seed"])
+        totals: dict[str, float] = defaultdict(float)
+        steps = 0
+        for episode in range(episodes):
+            obs, _, masks = env.reset(seed=10_000 + episode + offset)
+            done = False
+            while not done:
+                output = env.step(agent.greedy(obs, masks, rng))
+                for key, value in output.info.items():
+                    totals[key] += float(value)
+                obs, masks, done = output.observations, output.action_masks, output.done
                 steps += 1
         result = summarize_metrics(totals, steps)
     else:
@@ -401,7 +425,7 @@ def main() -> None:
     print(f"jobs total={len(jobs)} todo={len(todo)} parallel={args.jobs} episodes={args.episodes}")
     start = time.monotonic()
     # Heavier jobs first for better packing.
-    weight = {"M5": 5, "M4": 4, "M3": 3, "M2": 2, "M1": 1, "M1D": 1}
+    weight = {"M5": 5, "M4": 4, "M3": 3, "M2": 2, "M1": 1, "M1D": 1, "MADQN": 1}
     todo.sort(key=lambda j: -weight.get(j["model"], 0))
     with ProcessPoolExecutor(max_workers=args.jobs) as pool:
         futures = {pool.submit(run_job, job): job for job in todo}

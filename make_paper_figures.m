@@ -1,729 +1,326 @@
-%% make_paper_figures.m  (IEEE JSAC/TWC style)
-% Journal-style figures for the CHO/PDCP agentic manuscript.
+%% make_paper_figures.m  --  plain journal-style figures (grouped bars per metric)
+% Layout follows common IEEE practice: one panel per metric, the two
+% evaluation conditions on the x-axis, one bar per method, one shared legend
+% on top, no numbers printed inside the plots (values are given in the text
+% and tables).
 %
-% Output:
-%   <ROOT>/fig/png/figXX_*.png  (600 dpi)
-%   <ROOT>/fig/pdf/figXX_*.pdf  (vector)
+% Output (ROOT/fig/pdf and ROOT/fig/png):
+%   fig01_training      training convergence (common reward)
+%   fig02_comparison    all baselines + MADQN + MAPPO (M1) + M5, six metrics
+%   fig03_ablation      capability ladder M1-M5 and M1D, four metrics
+%   fig04_behavior      how CHO preparations are used, three metrics
+%   fig05_tradeoff      HO executions vs outage of the learned variants
 %
-% Figures 01-15: evaluation results (single plot per figure, no error bars;
-%                95% CIs are reported in the manuscript tables).
-% Figure 16    : training convergence of the COMMON reward
-%                r = -C_def - lambda*C_ctrl (mean over 5 training seeds).
-%                The common reward is used for every model, including M5,
-%                whose logged training reward additionally contains the
-%                Lagrangian penalty mu*(C_out - eps) and is therefore not
-%                comparable across models.
-%
-% Design principles:
-%   - IEEE single-column width (3.5 in), Times New Roman 9 pt
-%   - no in-figure titles, no value labels
-%   - one accent colour for M5, grey tones for the other methods
-%   - light dotted grid, open top/right borders, vector PDF export
-
+% Data: ROOT/outputs/unified_eval/raw/*.json (copy the M1D_*.json files there),
+%       training logs under ROOT/outputs/...
 clear; close all;
 
-%% ========================= User setting ================================
+%% ------------------------------ settings ---------------------------------
 ROOT = '/Users/jeonjiwoong/Desktop/CHO_simul';
-%% ======================================================================
+K.font      = 'Times New Roman';
+K.fs        = 9;            % font size
+K.lw        = 0.5;          % bar edge width
+K.showCI    = false;        % true: draw 95% CI error bars
+K.colW      = 3.5;          % single column width (in)
+K.pageW     = 7.16;         % double column width (in)
 
-RAW    = fullfile(ROOT, 'outputs', 'unified_eval', 'raw');
-FIGDIR = fullfile(ROOT, 'fig');
-LAMBDA = 0.25;                      % reward weight lambda (Table I)
+% method sets ----------------------------------------------------------------
+CMP.keys  = {'CHO-A3-TTT', 'CHO-A3-TTT+Dup', 'Max-Observed-SINR', 'Always-Dup', ...
+             'Threshold-Dup', 'MADQN', 'M1', 'M5'};
+CMP.names = {'CHO', 'CHO+Dup', 'Max-SINR', 'Always-Dup', 'Threshold-Dup', ...
+             'MADQN', 'MAPPO (M1)', 'M5 (proposed)'};
+CMP.col   = [0.000 0.447 0.741;  0.301 0.745 0.933;  0.929 0.694 0.125;
+             0.494 0.184 0.556;  0.466 0.674 0.188;  0.250 0.250 0.250;
+             0.600 0.600 0.600;  0.850 0.325 0.098];
+% methods shown in the training-curve figure (missing logs are skipped)
+TRN.keys  = {'MADQN', 'M1', 'M2', 'M3', 'M4', 'M5', 'M1D'};
+TRN.names = {'MADQN', 'M1 (MAPPO)', 'M2', 'M3', 'M4', 'M5', 'M1D'};
+TRN.col   = [0.250 0.250 0.250;  0.600 0.600 0.600;  0.301 0.745 0.933;
+             0.466 0.674 0.188;  0.929 0.694 0.125;  0.850 0.325 0.098;
+             0.000 0.447 0.741];
+ABL.keys  = {'M1', 'M2', 'M3', 'M4', 'M5', 'M1D'};
+ABL.names = {'M1', 'M2', 'M3', 'M4', 'M5', 'M1D'};
+ABL.col   = [0.600 0.600 0.600;  0.301 0.745 0.933;  0.466 0.674 0.188;
+             0.929 0.694 0.125;  0.850 0.325 0.098;  0.000 0.447 0.741];
+CONDS  = {'nominal', 'stress'};
+CLABEL = {'Nominal', 'Compound stress'};
+SEEDS  = [7 8 9 10 11];
+LAMBDA = 0.25;
 
-if ~exist(fullfile(FIGDIR, 'png'), 'dir'), mkdir(fullfile(FIGDIR, 'png')); end
-if ~exist(fullfile(FIGDIR, 'pdf'), 'dir'), mkdir(fullfile(FIGDIR, 'pdf')); end
+RAW = fullfile(ROOT, 'outputs', 'unified_eval', 'raw');
+OUT = fullfile(ROOT, 'fig');
+if ~exist(fullfile(OUT, 'pdf'), 'dir'), mkdir(fullfile(OUT, 'pdf')); end
+if ~exist(fullfile(OUT, 'png'), 'dir'), mkdir(fullfile(OUT, 'png')); end
+set(groot, 'DefaultAxesFontName', K.font, 'DefaultTextFontName', K.font, ...
+    'DefaultAxesFontSize', K.fs, 'DefaultTextFontSize', K.fs);
 
-% IEEE single-column width. Heights are selected per plot below.
-W  = 3.5;
-H5 = 2.05;   % about 4-5 rows
-H6 = 2.25;   % about 6 rows
-H7 = 2.45;   % about 7 rows
-H9 = 2.85;   % about 9 rows
-HS = 2.35;   % scatter / trade-off
-HT = 2.40;   % training curves
-
-LEARNED = {'M1', 'M2', 'M3', 'M4', 'M5'};
-ALLM    = [LEARNED, {'CHO-A3-TTT', 'Max-Observed-SINR', 'Always-Dup', 'Threshold-Dup'}];
-ALLL    = [LEARNED, {'CHO (A3/TTT)', 'Max-SINR', 'Always-Dup', 'Threshold-Dup'}];
-LCHO    = [LEARNED, {'CHO-A3-TTT'}];
-LCHOL   = [LEARNED, {'CHO (A3/TTT)'}];
-SEEDS   = [7 8 9 10 11];
-EVALS   = [7 8 9 10 11];
-
-%% ========================== Journal style ==============================
-C.accent      = [0.000 0.365 0.635];  % M5
-C.accentDark  = [0.000 0.245 0.430];
-C.learn       = [0.760 0.815 0.865];
-C.rule        = [0.690 0.690 0.690];
-C.text        = [0.120 0.120 0.120];
-C.axis        = [0.180 0.180 0.180];
-C.grid        = [0.865 0.865 0.865];
-C.separator   = [0.740 0.740 0.740];
-C.zero        = [0.260 0.260 0.260];
-C.positive    = [0.760 0.300 0.220];
-C.negative    = C.accent;
-C.white       = [1 1 1];
-% training-curve lines for M1-M4 (grey levels + line styles, grayscale-safe)
-C.curveGray   = [0.55 0.55 0.55; 0.40 0.40 0.40; 0.70 0.70 0.70; 0.25 0.25 0.25];
-C.curveStyle  = {'--', ':', '-.', '-'};
-
-S.fontName    = 'Times New Roman';
-S.fontSize    = 9;
-S.axisLW      = 0.65;
-S.lineLW      = 1.15;
-S.gridLW      = 0.45;
-S.barHeight   = 0.58;
-S.markerSize  = 6.2;
-S.visible     = 'off';
-
-set(groot, ...
-    'DefaultFigureColor', 'w', ...
-    'DefaultAxesFontName', S.fontName, ...
-    'DefaultTextFontName', S.fontName, ...
-    'DefaultAxesFontSize', S.fontSize, ...
-    'DefaultTextFontSize', S.fontSize, ...
-    'DefaultAxesLineWidth', S.axisLW, ...
-    'DefaultLineLineWidth', S.lineLW, ...
-    'DefaultAxesBox', 'off', ...
-    'DefaultAxesTickDir', 'out', ...
-    'DefaultAxesTickLength', [0.012 0.012], ...
-    'DefaultAxesXColor', C.axis, ...
-    'DefaultAxesYColor', C.axis, ...
-    'DefaultAxesTickLabelInterpreter', 'tex', ...
-    'DefaultTextInterpreter', 'tex', ...
-    'DefaultLegendInterpreter', 'tex');
-
-%% ======================== Load raw results =============================
+%% ------------------------------ load data --------------------------------
 files = dir(fullfile(RAW, '*.json'));
-if isempty(files)
-    error('No JSON result files found in: %s', RAW);
-end
-
-fprintf('Reading %d result files ...\n', numel(files));
+if isempty(files), error('No result files in %s', RAW); end
 R = struct('label', {}, 'cond', {}, 'ts', {}, 'es', {}, 'm', {});
-
 for k = 1:numel(files)
     j = jsondecode(fileread(fullfile(files(k).folder, files(k).name)));
-
-    label = j.model;
-    if isfield(j, 'ablation') && ~strcmp(j.ablation, 'none')
-        label = [j.model '[' j.ablation ']'];
-    end
-
+    if isfield(j, 'ablation') && ~strcmp(j.ablation, 'none'), continue; end
     m = j.metrics;
     m.delivery_ratio = 100 * m.delivered_packets / m.arrivals;
-    m.overflow_ratio = 100 * m.overflow_packets / m.arrivals;
-
-    R(end + 1) = struct( ...
-        'label', label, ...
-        'cond', j.condition, ...
-        'ts', j.train_seed, ...
-        'es', j.eval_seed, ...
-        'm', m); %#ok<SAGROW>
+    m.deadline_pct   = 100 * m.deadline_violation_rate;
+    m.commit_pct     = 100 * m.prepare_to_commit_rate;
+    m.reject_pct     = 100 * m.preparation_rejection_rate;
+    m.common_reward  = -m.service_deficit - LAMBDA * m.resource_cost;
+    R(end + 1) = struct('label', j.model, 'cond', j.condition, 'ts', j.train_seed, ...
+                        'es', j.eval_seed, 'm', m); %#ok<SAGROW>
 end
-
-M = @(label, cond, metric) mean(unit_values(R, label, cond, metric, SEEDS, EVALS));
+fprintf('%d result files loaded\n', numel(R));
 FAILED = {};
 
-%% ================= 01-02: outage ratio, all methods ====================
+%% ------------------------- fig01: training curves ------------------------
 try
-    journal_bar(M, ALLM, ALLL, 'nominal', 'outage_ratio', 1, ...
-        'Outage ratio', C, S, 'fig01_outage_nominal', W, H9, FIGDIR);
-
-    journal_bar(M, ALLM, ALLL, 'stress', 'outage_ratio', 1, ...
-        'Outage ratio', C, S, 'fig02_outage_stress', W, H9, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '01-02: outage ratio', err);
-end
-
-%% ================= 03-06: mobility efficiency ==========================
-try
-    journal_bar(M, LCHO, LCHOL, 'nominal', 'handover_started', 1, ...
-        'HO executions per epoch', C, S, 'fig03_ho_executions', W, H6, FIGDIR);
-
-    journal_bar(M, [LCHO, {'Max-Observed-SINR'}], [LCHOL, {'Max-SINR'}], ...
-        'nominal', 'pingpong_rate', 1, 'Ping-pong ratio', ...
-        C, S, 'fig04_pingpong', W, H7, FIGDIR);
-
-    journal_bar(M, LCHO, LCHOL, 'nominal', 'handover_failure', 1, ...
-        'Failed HOs per epoch', C, S, 'fig05_ho_failures', W, H6, FIGDIR);
-
-    journal_bar(M, LEARNED, LEARNED, 'nominal', 'resource_cost', 1e3, ...
-        'Resource cost (\times10^{-3})', C, S, ...
-        'fig06_resource_learned', W, H5, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '03-06: mobility efficiency', err);
-end
-
-%% ================= 07-08: delivered service ============================
-try
-    journal_bar(M, ALLM, ALLL, 'nominal', 'delivery_ratio', 1, ...
-        'Packet delivery ratio (%)', C, S, ...
-        'fig07_delivery_ratio', W, H9, FIGDIR);
-
-    journal_bar(M, ALLM, ALLL, 'nominal', 'deadline_violation_rate', 100, ...
-        'Deadline-violation rate (%)', C, S, ...
-        'fig08_deadline_violation', W, H9, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '07-08: delivered service', err);
-end
-
-%% ================= 09-11: CHO usage ===================================
-try
-    journal_bar(M, LCHO, LCHOL, 'nominal', 'prepare_to_commit_rate', 100, ...
-        'Preparations ending in a switch (%)', C, S, ...
-        'fig09_prep_to_commit', W, H6, FIGDIR);
-
-    journal_bar(M, LCHO, LCHOL, 'nominal', 'preparation_rejection_rate', 100, ...
-        'Rejected preparation requests (%)', C, S, ...
-        'fig10_prep_rejection', W, H6, FIGDIR);
-
-    journal_bar(M, LCHO, LCHOL, 'nominal', 'mean_prepared_duration', 1, ...
-        'Preparation holding time (epochs)', C, S, ...
-        'fig11_prep_holding_time', W, H6, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '09-11: CHO usage', err);
-end
-
-%% ================= 12: M5 relative to M1 ===============================
-try
-    rm = {'pingpong_rate', 'handover_started', 'resource_cost', ...
-          'handover_failure', 'outage_ratio'};
-    rl = {'Ping-pong ratio', 'HO executions', 'Resource cost', ...
-          'HO failures', 'Outage ratio'};
-
-    v = zeros(1, numel(rm));
-    for q = 1:numel(rm)
-        v(q) = pct_change(M('M5', 'nominal', rm{q}), ...
-                          M('M1', 'nominal', rm{q}), rm{q});
+    fh = newfig(K.colW, 2.4); ax = newax(fh, K);
+    mk = {'x', 'o', 's', '^', 'd', 'p', 'v'};
+    hl = []; names = {};
+    for k = 1:numel(TRN.keys)
+        [x, y] = training_curve(ROOT, TRN.keys{k}, SEEDS, LAMBDA);
+        if isempty(y), continue; end
+        idx = 1:200:numel(x);
+        hl(end + 1) = plot(ax, x, y, '-', 'Color', TRN.col(k, :), 'LineWidth', 1.0); %#ok<SAGROW>
+        plot(ax, x(idx), y(idx), mk{k}, 'Color', TRN.col(k, :), 'MarkerSize', 3.5, ...
+             'MarkerFaceColor', 'w', 'HandleVisibility', 'off');
+        names{end + 1} = TRN.names{k}; %#ok<SAGROW>
     end
-
-    journal_relative(rl, v, 'Relative change of M5 vs. M1 (%)', ...
-        C, S, 'fig12_m5_vs_m1', W, H5, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '12: M5 relative to M1', err);
-end
-
-%% ================= 13: M5 relative to CHO ===============================
-try
-    rm = {'pingpong_rate', 'handover_failure', 'outage_ratio', ...
-          'overflow_ratio', 'service_deficit', 'deadline_violation_rate'};
-    rl = {'Ping-pong ratio', 'HO failures', 'Outage ratio', ...
-          'Queue overflow', 'Service deficit', 'Deadline violations'};
-
-    v = zeros(1, numel(rm));
-    for q = 1:numel(rm)
-        v(q) = pct_change(M('M5', 'nominal', rm{q}), ...
-                          M('CHO-A3-TTT', 'nominal', rm{q}), rm{q});
-    end
-
-    journal_relative(rl, v, 'Relative change of M5 vs. CHO (%)', ...
-        C, S, 'fig13_m5_vs_cho', W, H6, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '13: M5 relative to CHO', err);
-end
-
-%% ================= 14: HO vs outage trade-off ==========================
-try
-    xs = zeros(1, numel(LEARNED));
-    ys = zeros(1, numel(LEARNED));
-
-    for k = 1:numel(LEARNED)
-        xs(k) = M(LEARNED{k}, 'nominal', 'handover_started');
-        ys(k) = M(LEARNED{k}, 'nominal', 'outage_ratio');
-    end
-
-    if any(~isfinite(xs)) || any(~isfinite(ys))
-        error('Missing/non-finite value in trade-off figure.');
-    end
-
-    fh = new_figure(W, HS, S);
-    ax = axes('Parent', fh);
-    hold(ax, 'on');
-    style_axes(ax, C, S, true);
-
-    [xlo, xhi] = padded_limits(xs, 0.12);
-    [ylo, yhi] = padded_limits(ys, 0.16);
-    xlim(ax, [xlo xhi]);
-    ylim(ax, [ylo yhi]);
-
-    markers = {'o', 's', '^', 'd'};
-    for k = 1:4
-        plot(ax, xs(k), ys(k), markers{k}, ...
-            'LineStyle', 'none', ...
-            'MarkerSize', S.markerSize, ...
-            'MarkerFaceColor', C.white, ...
-            'MarkerEdgeColor', [0.38 0.38 0.38], ...
-            'LineWidth', 0.9);
-    end
-
-    plot(ax, xs(5), ys(5), 'o', ...
-        'LineStyle', 'none', ...
-        'MarkerSize', S.markerSize + 1.3, ...
-        'MarkerFaceColor', C.accent, ...
-        'MarkerEdgeColor', C.accentDark, ...
-        'LineWidth', 0.9);
-
-    dx = 0.025 * (xhi - xlo);
-    dy = 0.010 * (yhi - ylo);
-    for k = 1:4
-        text(ax, xs(k) + dx, ys(k) + dy, LEARNED{k}, ...
-            'Color', C.text, ...
-            'FontSize', S.fontSize - 0.5, ...
-            'VerticalAlignment', 'middle');
-    end
-    text(ax, xs(5) + dx, ys(5) + dy, 'M5', ...
-        'Color', C.accentDark, ...
-        'FontWeight', 'bold', ...
-        'FontSize', S.fontSize, ...
-        'VerticalAlignment', 'middle');
-
-    xlabel(ax, 'HO executions per epoch');
-    ylabel(ax, 'Outage ratio');
-
-    save_journal_fig(fh, 'fig14_tradeoff_learned', W, HS, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '14: trade-off', err);
-end
-
-%% ================= 15: price ablation ==================================
-try
-    rm = {'handover_started', 'pingpong_rate', 'resource_cost', 'outage_ratio'};
-    rl = {'HO executions', 'Ping-pong ratio', 'Resource cost', 'Outage ratio'};
-    v = zeros(1, numel(rm));
-
-    for q = 1:numel(rm)
-        base = unit_values(R, 'M5', 'nominal', rm{q}, SEEDS, EVALS);
-        abl  = unit_values(R, 'M5[price_zero]', 'nominal', rm{q}, SEEDS, EVALS);
-        n = min(numel(base), numel(abl));
-
-        if n == 0
-            error('No paired values for price ablation metric: %s', rm{q});
-        end
-        if any(base(1:n) == 0)
-            error('Zero denominator in price ablation metric: %s', rm{q});
-        end
-
-        v(q) = mean(100 * (abl(1:n) - base(1:n)) ./ base(1:n));
-    end
-
-    journal_relative(rl, v, 'Change after removing the price term (%)', ...
-        C, S, 'fig15_m5_price_removed', W, H5, FIGDIR);
-catch err
-    FAILED = record_failure(FAILED, '15: price ablation', err);
-end
-
-%% ================= 16: training convergence (common reward) ============
-% Mean over the five training seeds of the 50-iteration moving average of
-% r = -C_def - lambda*C_ctrl, sampled every 10 iterations. No spread band.
-try
-    fh = new_figure(W, HT, S);
-    ax = axes('Parent', fh);
-    hold(ax, 'on');
-    style_axes(ax, C, S, true);
-
-    hl = zeros(1, numel(LEARNED));
-    x = [];
-    for k = 1:numel(LEARNED)
-        Y = [];
-        for s = SEEDS
-            f = training_csv(ROOT, LEARNED{k}, s);
-            if ~exist(f, 'file')
-                warning('Missing training log: %s', f);
-                continue;
-            end
-            [hdr, D] = read_numeric_csv(f);
-            sdef = D(:, strcmp(hdr, 'service_deficit'));
-            rc   = D(:, strcmp(hdr, 'resource_cost'));
-            it   = D(:, strcmp(hdr, 'iteration'));
-            if isempty(sdef) || isempty(rc) || isempty(it)
-                warning('Required columns missing in %s; skipped.', f);
-                continue;
-            end
-            y = moving_average(-sdef - LAMBDA * rc, 50);
-            idx = 10:10:numel(y);
-            Y = [Y; y(idx)']; %#ok<AGROW>
-            x = it(idx)';
-        end
-        if isempty(Y)
-            error('No training logs found for %s (checked %s)', LEARNED{k}, ...
-                  fileparts(training_csv(ROOT, LEARNED{k}, SEEDS(1))));
-        end
-        fprintf('  %s: %d training logs used\n', LEARNED{k}, size(Y, 1));
-        mu_k = mean(Y, 1);
-        if strcmp(LEARNED{k}, 'M5')
-            hl(k) = plot(ax, x, mu_k, '-', 'Color', C.accent, 'LineWidth', 1.6);
-        else
-            hl(k) = plot(ax, x, mu_k, C.curveStyle{k}, ...
-                'Color', C.curveGray(k, :), 'LineWidth', 1.0);
-        end
-    end
-    uistack(hl(5), 'top');
-    xlim(ax, [0 max(x)]);
-    xlabel(ax, 'Training iteration');
-    ylabel(ax, 'Common reward (moving avg.)');
-    lg = legend(ax, hl, LEARNED, 'Location', 'southeast', 'Box', 'off');
+    xlabel(ax, 'Training iteration'); ylabel(ax, 'Common reward');
+    xlim(ax, [0 2000]);
+    lg = legend(ax, hl, names, 'Location', 'southeast');
     if isprop(lg, 'NumColumns'), lg.NumColumns = 2; end
-    if isprop(lg, 'ItemTokenSize'), lg.ItemTokenSize = [16 8]; end
-
-    save_journal_fig(fh, 'fig16_training_curves', W, HT, FIGDIR);
+    savefig_all(fh, 'fig01_training', K.colW, 2.4, OUT);
 catch err
-    FAILED = record_failure(FAILED, '16: training curves', err);
+    FAILED = fail(FAILED, 'fig01_training', err);
 end
 
-%% ========================== Summary ====================================
-fprintf('\nDone. Figures saved in %s\n', FIGDIR);
+%% ------------------------- fig02: comparison -----------------------------
+try
+    P = { 'outage_ratio',     1, '(a) Outage ratio';
+          'service_deficit',  1, '(b) Service deficit';
+          'delivery_ratio',   1, '(c) Packet delivery ratio (%)';
+          'deadline_pct',     1, '(d) Deadline-violation rate (%)';
+          'pingpong_rate',    1, '(e) Ping-pong ratio';
+          'handover_failure', 1, '(f) Failed handovers per epoch'};
+    panel_figure(R, CMP, P, CONDS, CLABEL, SEEDS, K, 2, 3, K.pageW, 4.3, ...
+                 'fig02_comparison', OUT);
+catch err
+    FAILED = fail(FAILED, 'fig02_comparison', err);
+end
+
+%% ------------------------- fig03: capability ablation --------------------
+try
+    P = { 'outage_ratio',     1, '(a) Outage ratio';
+          'handover_started', 1, '(b) HO executions per epoch';
+          'pingpong_rate',    1, '(c) Ping-pong ratio';
+          'common_reward',    1, '(d) Common reward'};
+    panel_figure(R, ABL, P, CONDS, {'Nominal', 'Stress'}, SEEDS, K, 1, 4, K.pageW, 2.3, ...
+                 'fig03_ablation', OUT);
+catch err
+    FAILED = fail(FAILED, 'fig03_ablation', err);
+end
+
+%% ------------------------- fig04: behavior -------------------------------
+try
+    P = { 'commit_pct',             1, '(a) Preparations ending in a switch (%)';
+          'reject_pct',             1, '(b) Rejected preparation requests (%)';
+          'mean_prepared_duration', 1, '(c) Preparation holding time (epochs)'};
+    panel_figure(R, CMP, P, CONDS, CLABEL, SEEDS, K, 1, 3, K.pageW, 2.5, ...
+                 'fig04_behavior', OUT);
+catch err
+    FAILED = fail(FAILED, 'fig04_behavior', err);
+end
+
+%% ------------------------- fig05: trade-off ------------------------------
+try
+    fh = newfig(K.colW, 2.4); ax = newax(fh, K);
+    mk = {'o', 's', '^', 'd', 'p', 'v'};
+    hs = []; names = {}; xs = []; ys = [];
+    for k = 1:numel(ABL.keys)
+        if ~any(strcmp({R.label}, ABL.keys{k})), continue; end
+        xv = mean(unit_values(R, ABL.keys{k}, 'nominal', 'handover_started', SEEDS));
+        yv = mean(unit_values(R, ABL.keys{k}, 'nominal', 'outage_ratio', SEEDS));
+        xs(end + 1) = xv; ys(end + 1) = yv; %#ok<SAGROW>
+        hs(end + 1) = plot(ax, xv, yv, mk{k}, 'MarkerSize', 7, 'LineWidth', 0.8, ...
+            'MarkerEdgeColor', 'k', 'MarkerFaceColor', ABL.col(k, :)); %#ok<SAGROW>
+        names{end + 1} = ABL.names{k}; %#ok<SAGROW>
+    end
+    xlabel(ax, 'Handover executions per epoch'); ylabel(ax, 'Outage ratio');
+    lg = legend(ax, hs, names, 'Location', 'northwest');
+    if isprop(lg, 'NumColumns'), lg.NumColumns = 3; end
+    dx = max(xs) - min(xs); dy = max(ys) - min(ys);
+    xlim(ax, [min(xs) - 0.25 * dx, max(xs) + 0.25 * dx]);
+    ylim(ax, [min(ys) - 0.3 * dy, max(ys) + 0.9 * dy]);
+    savefig_all(fh, 'fig05_tradeoff', K.colW, 2.4, OUT);
+catch err
+    FAILED = fail(FAILED, 'fig05_tradeoff', err);
+end
+
+fprintf('\nFigures written to %s\n', OUT);
 if isempty(FAILED)
-    fprintf('All 16 figures were created.\n');
+    fprintf('All figures created.\n');
 else
-    fprintf(2, '%d block(s) failed:\n', size(FAILED, 1));
-    for k = 1:size(FAILED, 1)
-        fprintf(2, '  - %s: %s\n', FAILED{k, 1}, FAILED{k, 2});
+    for k = 1:size(FAILED, 1), fprintf(2, 'FAILED %s: %s\n', FAILED{k, 1}, FAILED{k, 2}); end
+end
+
+%% =========================================================================
+%% local functions
+%% =========================================================================
+function panel_figure(R, S, P, conds, clabel, seeds, K, nr, nc, w, h, name, out)
+% one panel per metric; x-axis = condition; one bar per method; shared legend
+fh = newfig(w, h);
+nm = numel(S.keys);
+present = cellfun(@(k) any(strcmp({R.label}, k)), S.keys);
+keys = S.keys(present); names = S.names(present); col = S.col(present, :);
+nm = numel(keys);
+if w > 5, ncol = nm; else, ncol = 3; end      % legend columns
+nrow = ceil(nm / ncol);
+legH   = (0.16 + 0.17 * nrow) / h;              % legend band (normalized)
+titleH = 0.22 / h; tickH = 0.24 / h;            % title above, tick labels below
+left = 0.42 / w; right = 0.06 / w; gapX = 0.42 / w;
+pw = (1 - left - right - (nc - 1) * gapX) / nc;
+ph = (1 - legH - nr * (titleH + tickH)) / nr;
+hb = [];
+for p = 1:size(P, 1)
+    r = ceil(p / nc); c = p - (r - 1) * nc;
+    pos = [left + (c - 1) * (pw + gapX), 1 - legH - titleH - ph - (r - 1) * (ph + titleH + tickH), pw, ph];
+    ax = axes('Parent', fh, 'Position', pos); hold(ax, 'on'); box(ax, 'on');
+    Y = zeros(numel(conds), nm); E = Y;
+    for i = 1:numel(conds)
+        for k = 1:nm
+            v = P{p, 2} * unit_values(R, keys{k}, conds{i}, P{p, 1}, seeds);
+            Y(i, k) = mean(v);
+            if numel(v) > 1
+                E(i, k) = tinv975(numel(v) - 1) * std(v) / sqrt(numel(v));
+            end
+        end
+    end
+    b = bar(ax, 1:numel(conds), Y, 0.85);
+    for k = 1:nm
+        set(b(k), 'FaceColor', col(k, :), 'EdgeColor', 'k', 'LineWidth', K.lw);
+    end
+    if K.showCI
+        for k = 1:nm
+            xk = (1:numel(conds)) + (k - (nm + 1) / 2) * 0.85 / nm;
+            errorbar(ax, xk, Y(:, k), E(:, k), 'k.', 'LineWidth', 0.5, 'MarkerSize', 1);
+        end
+    end
+    set(ax, 'XTick', 1:numel(conds), 'XTickLabel', clabel, 'XLim', [0.5 numel(conds) + 0.5], ...
+        'FontName', K.font, 'FontSize', K.fs, 'LineWidth', 0.5, 'TickDir', 'in', ...
+        'YGrid', 'on', 'GridLineStyle', ':');
+    lo = min(0, min(Y(:))); hi = max(Y(:));
+    if lo < 0, ylim(ax, [1.15 * lo, 0]); else, ylim(ax, [0, 1.12 * hi]); end
+    title(ax, P{p, 3}, 'FontWeight', 'normal', 'FontSize', K.fs);
+    if p == 1, hb = b; end
+end
+draw_legend(fh, names, col, legH, ncol, w, K);
+savefig_all(fh, name, w, h, out);
+end
+
+function draw_legend(fh, names, col, legH, ncol, w, K)
+% legend drawn by hand in a band at the top of the figure (identical in every
+% MATLAB/Octave version): colored boxes with black edges and labels
+ax = axes('Parent', fh, 'Position', [0 1 - legH 1 legH], 'Visible', 'off', ...
+          'XLim', [0 w], 'YLim', [0 1]);
+hold(ax, 'on');
+chw = 0.058 * K.fs / 9;                         % approx. character width (in)
+box = 0.16; gap = 0.06; sep = 0.22;             % inches
+widths = cellfun(@(n) box + gap + chw * numel(n) + sep, names);
+nrow = ceil(numel(names) / ncol);
+for r = 1:nrow
+    idx = (r - 1) * ncol + 1 : min(r * ncol, numel(names));
+    x = (w - sum(widths(idx)) + sep) / 2;
+    y = 1 - (r - 0.5) / nrow;
+    for k = idx
+        patch(ax, x + [0 box box 0], y + 0.18 / nrow * [-1 -1 1 1] * 1.1, col(k, :), ...
+              'EdgeColor', 'k', 'LineWidth', K.lw);
+        text(ax, x + box + gap, y, names{k}, 'FontName', K.font, 'FontSize', K.fs, ...
+             'VerticalAlignment', 'middle');
+        x = x + widths(k);
     end
 end
-
-%% ======================================================================
-%% Local functions
-%% ======================================================================
-
-function journal_bar(M, methods, labels, cond, metric, scale, xlab, C, S, name, w, h, figdir)
-% Horizontal journal-style bar chart. No redundant value labels.
-
-n = numel(methods);
-v = zeros(1, n);
-for i = 1:n
-    v(i) = scale * M(methods{i}, cond, metric);
 end
 
-if any(~isfinite(v))
-    bad = methods(~isfinite(v));
-    error('%s contains missing/non-finite values for: %s', name, strjoin(bad, ', '));
-end
-if any(v < 0)
-    error('%s received negative values; use journal_relative for signed data.', name);
+function t = tinv975(df)
+T = [12.706 4.303 3.182 2.776 2.571 2.447 2.365 2.306 2.262 2.228];
+if df <= numel(T), t = T(df); else, t = 1.96; end
 end
 
-fh = new_figure(w, h, S);
-ax = axes('Parent', fh);
-hold(ax, 'on');
-style_axes(ax, C, S, false);
-
-maxv = max(v);
-if maxv <= 0
-    maxv = 1;
-end
-xt = nice_ticks_positive(maxv * 1.055, 5);
-xlim(ax, [0 xt(end)]);
-set(ax, 'XTick', xt, ...
-        'YLim', [0.45 n + 0.55], ...
-        'YDir', 'reverse', ...
-        'YTick', 1:n, ...
-        'YTickLabel', labels);
-
-for i = 1:n
-    draw_hbar(ax, i, 0, v(i), S.barHeight, bar_color(methods{i}, C));
-end
-
-idxM5 = find(strcmp(methods, 'M5'), 1);
-if ~isempty(idxM5) && idxM5 < n
-    plot(ax, [0 xt(end)], [idxM5 + 0.5 idxM5 + 0.5], '-', ...
-        'Color', C.separator, 'LineWidth', 0.45);
-end
-
-xlabel(ax, xlab);
-apply_compact_insets(ax);
-save_journal_fig(fh, name, w, h, figdir);
-end
-
-function journal_relative(labels, v, xlab, C, S, name, w, h, figdir)
-% Signed horizontal bars. Blue = reduction, muted vermillion = increase.
-
-n = numel(v);
-if any(~isfinite(v))
-    error('%s contains missing/non-finite relative changes.', name);
-end
-
-fh = new_figure(w, h, S);
-ax = axes('Parent', fh);
-hold(ax, 'on');
-style_axes(ax, C, S, false);
-
-span = max(abs(v));
-if span == 0
-    span = 1;
-end
-lo = min(0, min(v)) - 0.08 * span;
-hi = max(0, max(v)) + 0.08 * span;
-xt = nice_ticks_signed(lo, hi, 6);
-
-xlim(ax, [xt(1) xt(end)]);
-set(ax, 'XTick', xt, ...
-        'YLim', [0.45 n + 0.55], ...
-        'YDir', 'reverse', ...
-        'YTick', 1:n, ...
-        'YTickLabel', labels);
-
-for i = 1:n
-    if v(i) <= 0
-        c = C.negative;
-    else
-        c = C.positive;
-    end
-    draw_hbar(ax, i, 0, v(i), S.barHeight, c);
-end
-
-plot(ax, [0 0], [0.45 n + 0.55], '-', ...
-    'Color', C.zero, 'LineWidth', 0.75);
-
-xlabel(ax, xlab);
-apply_compact_insets(ax);
-save_journal_fig(fh, name, w, h, figdir);
-end
-
-function fh = new_figure(w, h, S)
-fh = figure('Color', 'w', ...
-            'Visible', S.visible, ...
-            'Units', 'inches', ...
-            'Position', [1 1 w h], ...
-            'Renderer', 'painters', ...
-            'InvertHardcopy', 'off');
-end
-
-function style_axes(ax, C, S, bothGrid)
-set(ax, ...
-    'Color', 'w', ...
-    'FontName', S.fontName, ...
-    'FontSize', S.fontSize, ...
-    'LineWidth', S.axisLW, ...
-    'Box', 'off', ...
-    'TickDir', 'out', ...
-    'TickLength', [0.012 0.012], ...
-    'XColor', C.axis, ...
-    'YColor', C.axis, ...
-    'GridColor', C.grid, ...
-    'GridAlpha', 1.0, ...
-    'GridLineStyle', ':', ...
-    'MinorGridLineStyle', ':', ...
-    'XMinorGrid', 'off', ...
-    'YMinorGrid', 'off');
-
-if bothGrid
-    set(ax, 'XGrid', 'on', 'YGrid', 'on');
-else
-    set(ax, 'XGrid', 'on', 'YGrid', 'off');
-end
-
-ax.Layer = 'bottom';
-end
-
-function draw_hbar(ax, y, x0, x1, width, color)
-yv = y + width / 2 * [-1 -1 1 1];
-xv = [x0 x1 x1 x0];
-patch(ax, xv, yv, color, ...
-    'EdgeColor', 'none', ...
-    'FaceAlpha', 1.0);
-end
-
-function c = bar_color(method, C)
-if strcmp(method, 'M5')
-    c = C.accent;
-elseif any(strcmp(method, {'M1', 'M2', 'M3', 'M4'}))
-    c = C.learn;
-else
-    c = C.rule;
-end
-end
-
-function t = nice_ticks_positive(xmax, targetTicks)
-if ~isfinite(xmax) || xmax <= 0
-    t = [0 1];
-    return;
-end
-step = nice_step(xmax / targetTicks);
-hi = ceil(xmax / step) * step;
-t = 0:step:hi;
-if numel(t) < 3
-    step = step / 2;
-    t = 0:step:hi;
-end
-t(abs(t) < 1e-12) = 0;
-end
-
-function t = nice_ticks_signed(lo, hi, targetTicks)
-if ~isfinite(lo) || ~isfinite(hi) || hi <= lo
-    t = [-1 0 1];
-    return;
-end
-step = nice_step((hi - lo) / targetTicks);
-lo2 = floor(lo / step) * step;
-hi2 = ceil(hi / step) * step;
-t = lo2:step:hi2;
-
-if ~any(abs(t) < 1e-10)
-    t = sort(unique([t 0]));
-end
-t(abs(t) < 1e-12) = 0;
-end
-
-function s = nice_step(raw)
-if raw <= 0 || ~isfinite(raw)
-    s = 1;
-    return;
-end
-p = 10 ^ floor(log10(raw));
-f = raw / p;
-
-if f <= 1
-    nf = 1;
-elseif f <= 2
-    nf = 2;
-elseif f <= 2.5
-    nf = 2.5;
-elseif f <= 5
-    nf = 5;
-else
-    nf = 10;
-end
-s = nf * p;
-end
-
-function [lo, hi] = padded_limits(v, frac)
-vmin = min(v);
-vmax = max(v);
-span = vmax - vmin;
-if span <= 0
-    span = max(abs(vmax), 1);
-end
-lo = vmin - frac * span;
-hi = vmax + frac * span;
-end
-
-function p = pct_change(newValue, refValue, metricName)
-if ~isfinite(newValue) || ~isfinite(refValue)
-    error('Non-finite value while computing relative change for %s.', metricName);
-end
-if refValue == 0
-    error('Zero reference value while computing relative change for %s.', metricName);
-end
-p = 100 * (newValue / refValue - 1);
-end
-
-function v = unit_values(R, label, cond, metric, SEEDS, EVALS)
-% Learned policies: one value per training seed, averaged over eval seeds.
-% Rule-based policies: one value per evaluation seed.
-
+function v = unit_values(R, label, cond, metric, seeds)
+% learned: one value per training seed (mean over evaluation seeds);
+% rule-based (train seed 0): one value per evaluation seed
 sel = R(strcmp({R.label}, label) & strcmp({R.cond}, cond));
 v = [];
-if isempty(sel)
-    return;
-end
-
-if ~isfield(sel(1).m, metric)
-    error('Metric "%s" is absent for method "%s".', metric, label);
-end
-
+if isempty(sel), return; end
 if all([sel.ts] == 0)
-    for e = EVALS
-        r = sel([sel.es] == e);
-        if ~isempty(r)
-            v(end + 1) = r(1).m.(metric); %#ok<AGROW>
-        end
-    end
+    v = arrayfun(@(q) q.m.(metric), sel);
 else
-    for s = SEEDS
+    for s = seeds
         r = sel([sel.ts] == s);
-        if isempty(r)
-            continue;
-        end
-        v(end + 1) = mean(arrayfun(@(q) q.m.(metric), r)); %#ok<AGROW>
+        if ~isempty(r), v(end + 1) = mean(arrayfun(@(q) q.m.(metric), r)); end %#ok<AGROW>
     end
 end
 end
 
-function f = training_csv(ROOT, model, seed)
-% Seed 7 checkpoints live in v3_convergence_anneal_2000, seeds 8-11 in v3_anneal_2000_multiseed.
-if seed == 7
-    if strcmp(model, 'M5')
-        name = 'm5_dual_only_seed7';
+function [x, y] = training_curve(ROOT, model, seeds, lambda)
+Y = []; x = [];
+for s = seeds
+    if s == 7 && ~any(strcmp(model, {'M1D', 'MADQN'}))
+        d = lower(model); if strcmp(model, 'M5'), d = 'm5_dual_only'; end
+        f = fullfile(ROOT, 'outputs', 'v3_convergence_anneal_2000', [d '_seed7'], 'training_metrics.csv');
     else
-        name = [lower(model) '_seed7'];
+        f = fullfile(ROOT, 'outputs', 'v3_anneal_2000_multiseed', sprintf('%s_seed%d', lower(model), s), ...
+                     'training_metrics.csv');
     end
-    f = fullfile(ROOT, 'outputs', 'v3_convergence_anneal_2000', name, 'training_metrics.csv');
-else
-    f = fullfile(ROOT, 'outputs', 'v3_anneal_2000_multiseed', ...
-                 sprintf('%s_seed%d', lower(model), seed), 'training_metrics.csv');
-end
-end
-
-function [hdr, D] = read_numeric_csv(f)
-% Header names + numeric body; works in any MATLAB version and with CRLF files.
-fid = fopen(f, 'r');
-if fid < 0
-    error('Cannot open %s', f);
-end
-line1 = fgetl(fid);
-fclose(fid);
-line1 = regexprep(line1, '^\xEF\xBB\xBF', '');          % strip UTF-8 BOM
-hdr = strtrim(strsplit(strtrim(line1), ','));
-if exist('readmatrix', 'file') == 2 || exist('readmatrix', 'builtin') == 5
-    D = readmatrix(f, 'NumHeaderLines', 1);
-else
+    if ~exist(f, 'file'), continue; end
+    fid = fopen(f, 'r'); hdr = strtrim(strsplit(strtrim(fgetl(fid)), ',')); fclose(fid);
     D = dlmread(f, ',', 1, 0);
+    sd = D(:, strcmp(hdr, 'service_deficit')); rc = D(:, strcmp(hdr, 'resource_cost'));
+    it = D(:, strcmp(hdr, 'iteration'));
+    if isempty(sd) || isempty(rc) || isempty(it), continue; end
+    r = movmean_simple(-sd - lambda * rc, 50);
+    Y = [Y; r(:)']; x = it(:)'; %#ok<AGROW>
 end
-if size(D, 2) < numel(hdr)
-    error('Column mismatch in %s (%d header names, %d columns)', f, numel(hdr), size(D, 2));
-end
+if isempty(Y), y = []; else, y = mean(Y, 1); end
 end
 
-function y = moving_average(x, w)
-% Trailing moving average with a growing window at the start.
-x = x(:);
-c = cumsum(x);
-y = zeros(size(x));
+function y = movmean_simple(x, w)
+x = x(:); c = cumsum(x); y = zeros(size(x));
 for i = 1:numel(x)
     lo = max(1, i - w + 1);
-    if lo == 1
-        y(i) = c(i) / i;
-    else
-        y(i) = (c(i) - c(lo - 1)) / (i - lo + 1);
-    end
+    if lo == 1, y(i) = c(i) / i; else, y(i) = (c(i) - c(lo - 1)) / (i - lo + 1); end
 end
 end
 
-function apply_compact_insets(ax)
+function fh = newfig(w, h)
+fh = figure('Color', 'w', 'Visible', 'off', 'Units', 'inches', 'Position', [1 1 w h]);
+end
+
+function ax = newax(fh, K)
+ax = axes('Parent', fh); hold(ax, 'on'); box(ax, 'on');
+set(ax, 'FontName', K.font, 'FontSize', K.fs, 'LineWidth', 0.5, 'TickDir', 'in', ...
+    'XGrid', 'on', 'YGrid', 'on', 'GridLineStyle', ':');
+end
+
+function savefig_all(fh, name, w, h, out)
+set(fh, 'Units', 'inches', 'Position', [1 1 w h], 'PaperUnits', 'inches', ...
+    'PaperSize', [w h], 'PaperPosition', [0 0 w h]);
 drawnow;
-ti = get(ax, 'TightInset');
-minInset = [0.02 0.02 0.02 0.02];
-set(ax, 'LooseInset', max(ti, minInset));
-end
-
-function save_journal_fig(fh, name, w, h, figdir)
-set(fh, 'Units', 'inches');
-set(fh, 'Position', [1 1 w h]);
-set(fh, 'PaperUnits', 'inches', ...
-        'PaperSize', [w h], ...
-        'PaperPosition', [0 0 w h], ...
-        'PaperPositionMode', 'manual');
-
-drawnow;
-
-pngfile = fullfile(figdir, 'png', [name '.png']);
-pdffile = fullfile(figdir, 'pdf', [name '.pdf']);
-
+pdf = fullfile(out, 'pdf', [name '.pdf']); png = fullfile(out, 'png', [name '.png']);
 if ~isempty(which('exportgraphics'))
-    exportgraphics(fh, pngfile, 'Resolution', 600, 'BackgroundColor', 'white');
-    exportgraphics(fh, pdffile, 'ContentType', 'vector', 'BackgroundColor', 'white');
+    exportgraphics(fh, pdf, 'ContentType', 'vector', 'BackgroundColor', 'white');
+    exportgraphics(fh, png, 'Resolution', 600, 'BackgroundColor', 'white');
 else
-    print(fh, pngfile, '-dpng', '-r600');
-    print(fh, pdffile, '-dpdf');
+    print(fh, pdf, '-dpdf'); print(fh, png, '-dpng', '-r600');
 end
-
 close(fh);
 fprintf('  saved %s\n', name);
 end
 
-function FAILED = record_failure(FAILED, blockName, err)
-FAILED(end + 1, :) = {blockName, err.message}; %#ok<AGROW>
-fprintf(2, '  FAILED [%s]: %s\n', blockName, err.message);
+function F = fail(F, name, err)
+F(end + 1, :) = {name, err.message};
+fprintf(2, '  FAILED [%s]: %s\n', name, err.message);
 close all;
 end
