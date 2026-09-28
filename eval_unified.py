@@ -112,7 +112,7 @@ def make_config(model_overrides, condition: str, eval_seed: int, agent_seed: int
         # Same switch as eval_m4_price_ablation.py: coordination price stays 0.
         cfg["coordination"]["price_learning_rate"] = 0.0
         cfg["coordination"]["initial_price"] = 0.0
-    elif ablation not in ("none", "reasoning_zero"):
+    elif ablation not in ("none", "reasoning_zero", "greedy"):
         raise ValueError(f"unknown ablation {ablation}")
     return cfg
 
@@ -243,7 +243,9 @@ def run_job(job: dict) -> dict:
                 raise ValueError(f"{model} has no reasoning module to ablate")
             LookaheadReasoner.analyze = _uninformative_reasoning(original_analyze)
         try:
-            result = evaluate_policy(env, agent, episodes=episodes, deterministic=False,
+            # "greedy": argmax actions instead of sampling (same protocol as MADQN)
+            result = evaluate_policy(env, agent, episodes=episodes,
+                                     deterministic=job.get("ablation", "none") == "greedy",
                                      evaluation_action_seed=7000 + job["eval_seed"])
         finally:
             LookaheadReasoner.analyze = original_analyze  # worker processes are reused
@@ -374,7 +376,7 @@ def main() -> None:
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--out", default="outputs/unified_eval")
     parser.add_argument("--summarize-only", action="store_true")
-    parser.add_argument("--ablations", nargs="+", default=["none"], choices=["none", "price_zero", "reasoning_zero"],
+    parser.add_argument("--ablations", nargs="+", default=["none"], choices=["none", "price_zero", "reasoning_zero", "greedy"],
                         help="evaluate each learned model normally and/or with the coordination price forced to 0")
     args = parser.parse_args()
 
