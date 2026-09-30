@@ -28,3 +28,11 @@ __pycache__/
 *.synctex.gz
 
 *.zip
+# intermediate training checkpoints (kept locally, not versioned)
+outputs/**/checkpoints/
+# LaTeX build artifacts
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.synctex.gz
