@@ -20,7 +20,7 @@ ROOT = '/Users/jeonjiwoong/Desktop/CHO_simul';
 K.font      = 'Times New Roman';
 K.fs        = 9;            % font size
 K.lw        = 0.5;          % bar edge width
-K.showCI    = false;        % true: draw 95% CI error bars
+K.showSD    = false;        % true: draw error bars (standard deviation across seeds)
 K.colW      = 3.5;          % single column width (in)
 K.pageW     = 7.16;         % double column width (in)
 
@@ -34,7 +34,7 @@ CMP.col   = [0.000 0.447 0.741;  0.301 0.745 0.933;  0.929 0.694 0.125;
              0.600 0.600 0.600;  0.850 0.325 0.098];
 % methods shown in the training-curve figure (missing logs are skipped)
 TRN.keys  = {'MADQN', 'M1', 'M2', 'M3', 'M4', 'M5', 'M1D'};
-TRN.names = {'MADQN', 'M1 (MAPPO)', 'M2', 'M3', 'M4', 'M5', 'M1D'};
+TRN.names = {'MADQN', 'MAPPO (M1)', 'M2', 'M3', 'M4', 'M5', 'M1D'};
 TRN.col   = [0.250 0.250 0.250;  0.600 0.600 0.600;  0.301 0.745 0.933;
              0.466 0.674 0.188;  0.929 0.694 0.125;  0.850 0.325 0.098;
              0.000 0.447 0.741];
@@ -75,7 +75,7 @@ FAILED = {};
 
 %% ------------------------- fig01: training curves ------------------------
 try
-    fh = newfig(K.colW, 2.4); ax = newax(fh, K);
+    fh = newfig(K.colW, 2.0); ax = newax(fh, K);
     mk = {'x', 'o', 's', '^', 'd', 'p', 'v'};
     hl = []; names = {};
     for k = 1:numel(TRN.keys)
@@ -88,10 +88,10 @@ try
         names{end + 1} = TRN.names{k}; %#ok<SAGROW>
     end
     xlabel(ax, 'Training iteration'); ylabel(ax, 'Common reward');
-    xlim(ax, [0 2000]);
+    xlim(ax, [0 2000]); ylim(ax, [-0.24 -0.04]);   % room for the legend below the curves
     lg = legend(ax, hl, names, 'Location', 'southeast');
     if isprop(lg, 'NumColumns'), lg.NumColumns = 2; end
-    savefig_all(fh, 'fig01_training', K.colW, 2.4, OUT);
+    savefig_all(fh, 'fig01_training', K.colW, 2.0, OUT);
 catch err
     FAILED = fail(FAILED, 'fig01_training', err);
 end
@@ -104,7 +104,7 @@ try
           'deadline_pct',     1, '(d) Deadline-violation rate (%)';
           'pingpong_rate',    1, '(e) Ping-pong ratio';
           'handover_failure', 1, '(f) Failed handovers per epoch'};
-    panel_figure(R, CMP, P, CONDS, CLABEL, SEEDS, K, 2, 3, K.pageW, 4.3, ...
+    panel_figure(R, CMP, P, CONDS, CLABEL, SEEDS, K, 2, 3, K.pageW, 3.1, ...
                  'fig02_comparison', OUT);
 catch err
     FAILED = fail(FAILED, 'fig02_comparison', err);
@@ -116,7 +116,7 @@ try
           'handover_started', 1, '(b) HO executions per epoch';
           'pingpong_rate',    1, '(c) Ping-pong ratio';
           'common_reward',    1, '(d) Common reward'};
-    panel_figure(R, ABL, P, CONDS, {'Nominal', 'Stress'}, SEEDS, K, 1, 4, K.pageW, 2.3, ...
+    panel_figure(R, ABL, P, CONDS, {'Nominal', 'Stress'}, SEEDS, K, 1, 4, K.pageW, 1.85, ...
                  'fig03_ablation', OUT);
 catch err
     FAILED = fail(FAILED, 'fig03_ablation', err);
@@ -127,7 +127,7 @@ try
     P = { 'commit_pct',             1, '(a) Preparations ending in a switch (%)';
           'reject_pct',             1, '(b) Rejected preparation requests (%)';
           'mean_prepared_duration', 1, '(c) Preparation holding time (epochs)'};
-    panel_figure(R, CMP, P, CONDS, CLABEL, SEEDS, K, 1, 3, K.pageW, 2.5, ...
+    panel_figure(R, CMP, P, CONDS, CLABEL, SEEDS, K, 1, 3, K.pageW, 1.8, ...
                  'fig04_behavior', OUT);
 catch err
     FAILED = fail(FAILED, 'fig04_behavior', err);
@@ -175,9 +175,9 @@ nm = numel(S.keys);
 present = cellfun(@(k) any(strcmp({R.label}, k)), S.keys);
 keys = S.keys(present); names = S.names(present); col = S.col(present, :);
 nm = numel(keys);
-if w > 5, ncol = nm; else, ncol = 3; end      % legend columns
-nrow = ceil(nm / ncol);
-legH   = (0.16 + 0.17 * nrow) / h;              % legend band (normalized)
+ncol = legend_columns(names, w, K);           % as many columns as fit in one row
+nrow = ceil(nm / ncol); ncol = ceil(nm / nrow); % balance the rows (e.g. 4 + 4)
+legH   = (0.20 + 0.17 * nrow) / h;              % legend band (normalized)
 titleH = 0.22 / h; tickH = 0.24 / h;            % title above, tick labels below
 left = 0.42 / w; right = 0.06 / w; gapX = 0.42 / w;
 pw = (1 - left - right - (nc - 1) * gapX) / nc;
@@ -192,16 +192,14 @@ for p = 1:size(P, 1)
         for k = 1:nm
             v = P{p, 2} * unit_values(R, keys{k}, conds{i}, P{p, 1}, seeds);
             Y(i, k) = mean(v);
-            if numel(v) > 1
-                E(i, k) = tinv975(numel(v) - 1) * std(v) / sqrt(numel(v));
-            end
+            if numel(v) > 1, E(i, k) = std(v); end
         end
     end
     b = bar(ax, 1:numel(conds), Y, 0.85);
     for k = 1:nm
         set(b(k), 'FaceColor', col(k, :), 'EdgeColor', 'k', 'LineWidth', K.lw);
     end
-    if K.showCI
+    if K.showSD
         for k = 1:nm
             xk = (1:numel(conds)) + (k - (nm + 1) / 2) * 0.85 / nm;
             errorbar(ax, xk, Y(:, k), E(:, k), 'k.', 'LineWidth', 0.5, 'MarkerSize', 1);
@@ -225,7 +223,7 @@ function draw_legend(fh, names, col, legH, ncol, w, K)
 ax = axes('Parent', fh, 'Position', [0 1 - legH 1 legH], 'Visible', 'off', ...
           'XLim', [0 w], 'YLim', [0 1]);
 hold(ax, 'on');
-chw = 0.058 * K.fs / 9;                         % approx. character width (in)
+chw = 0.062 * K.fs / 9;                         % approx. character width (in)
 box = 0.16; gap = 0.06; sep = 0.22;             % inches
 widths = cellfun(@(n) box + gap + chw * numel(n) + sep, names);
 nrow = ceil(numel(names) / ncol);
@@ -241,6 +239,22 @@ for r = 1:nrow
         x = x + widths(k);
     end
 end
+end
+
+function ncol = legend_columns(names, w, K)
+% largest number of legend columns whose rows fit into the figure width
+chw = 0.062 * K.fs / 9; box = 0.16; gap = 0.06; sep = 0.22;
+widths = cellfun(@(n) box + gap + chw * numel(n) + sep, names);
+nm = numel(names);
+for ncol = nm:-1:1
+    ok = true;
+    for r = 1:ceil(nm / ncol)
+        idx = (r - 1) * ncol + 1 : min(r * ncol, nm);
+        if sum(widths(idx)) - sep > w - 0.15, ok = false; break; end
+    end
+    if ok, return; end
+end
+ncol = 1;
 end
 
 function t = tinv975(df)
