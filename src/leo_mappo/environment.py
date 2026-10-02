@@ -11,7 +11,13 @@ from .channel import ChannelModel, LinkResult
 from .coordinator import compute_training_reward
 from .events import EventGenerator
 from .pdcp import joint_delivery_probability
-from .satellite import SatelliteCell, estimate_remaining_visibility
+from .satellite import (
+    SatelliteCell,
+    circular_orbital_period_s,
+    elevation_and_distance,
+    estimate_remaining_visibility,
+    ground_position_ecef,
+)
 from .scheduler import LegRequest, QoSAwareFairScheduler
 from .ue import MobilityState, UE
 
@@ -79,6 +85,10 @@ class LEOMobilityEnv:
         self.interval_s = float(self.env_cfg["control_interval_s"])
         self.min_elevation_rad = np.radians(float(self.env_cfg["min_elevation_deg"]))
         self.satellites = self._make_satellites()
+        if len(self.satellites) != self.num_cells:
+            # A Walker slice determines its own (visibility-filtered) size.
+            self.num_cells = len(self.satellites)
+            self.global_state_dim = self.num_agents * self.obs_dim + 2 * self.num_cells
         self.ues = self._make_ues()
         self.channel = ChannelModel(
             carrier_hz=float(self.channel_cfg["carrier_ghz"]) * 1e9,
@@ -169,7 +179,17 @@ class LEOMobilityEnv:
     def rollback_action(self) -> int:
         return self.candidate_count + 5
 
+    # Service region used for UE placement (radians); shared with the
+    # Walker-slice visibility filter.
+    UE_LAT_HALF_RAD = 0.04
+    UE_LON_HALF_RAD = 0.05
+
+    def _constellation_cfg(self) -> dict:
+        return dict(self.sat_cfg.get("constellation", {}) or {})
+
     def _make_satellites(self) -> list[SatelliteCell]:
+        if self._constellation_cfg().get("type", "local_slice") == "walker_slice":
+            return self._make_walker_slice()
         altitude_m = float(self.sat_cfg["altitude_km"]) * 1e3
         inclination = np.radians(float(self.sat_cfg["inclination_deg"]))
         period = float(self.sat_cfg["orbital_period_s"])
@@ -192,6 +212,71 @@ class LEOMobilityEnv:
             for index, phase in enumerate(phases)
         ]
 
+    def _make_walker_slice(self) -> list[SatelliteCell]:
+        """Adjacent planes of a Walker shell, restricted to satellites that can
+        become visible from the service region during an episode."""
+        cfg = self._constellation_cfg()
+        altitude_m = float(self.sat_cfg["altitude_km"]) * 1e3
+        inclination = np.radians(float(self.sat_cfg["inclination_deg"]))
+        period = self.sat_cfg.get("orbital_period_s", "auto")
+        period = circular_orbital_period_s(altitude_m) if period in (None, "auto") else float(period)
+        planes = int(cfg.get("planes", 2))
+        per_plane = int(cfg.get("sats_per_plane", 22))
+        raan_spacing = np.radians(float(cfg.get("raan_spacing_deg", 5.0)))
+        in_plane = 2.0 * np.pi / per_plane
+        phase_offset = np.radians(float(cfg.get("phase_offset_deg", np.degrees(in_plane) / 2.0)))
+        rate = 2.0 * np.pi / period
+        self.constellation_period_s = period
+        self.max_epoch_offset_s = period / per_plane if bool(cfg.get("random_epoch", True)) else 0.0
+        horizon_s = float(self.env_cfg["episode_steps"]) * float(self.env_cfg["control_interval_s"])
+        horizon_s += self.max_epoch_offset_s
+        margin = np.radians(float(cfg.get("visibility_margin_deg", 5.0)))
+        threshold = np.radians(float(self.env_cfg["min_elevation_deg"])) - margin
+        probes = [
+            ground_position_ecef(la, lo)
+            for la in (-self.UE_LAT_HALF_RAD, 0.0, self.UE_LAT_HALF_RAD)
+            for lo in (-self.UE_LON_HALF_RAD, 0.0, self.UE_LON_HALF_RAD)
+        ]
+        times = np.arange(0.0, horizon_s + 1e-9, 5.0)
+        cells: list[SatelliteCell] = []
+        for k in range(planes):
+            raan = (k - (planes - 1) / 2.0) * raan_spacing
+            for slot in range(per_plane):
+                phase = float(np.angle(np.exp(1j * (slot * in_plane + k * phase_offset))))
+                cell = SatelliteCell(
+                    cell_id=len(cells),
+                    altitude_m=altitude_m,
+                    inclination_rad=inclination,
+                    phase_rad=phase,
+                    angular_rate_rad_s=rate,
+                    bandwidth_hz=float(self.sat_cfg["bandwidth_mhz"]) * 1e6,
+                    tx_power_dbm=float(self.sat_cfg["tx_power_dbm"]),
+                    tx_gain_dbi=float(self.sat_cfg["tx_gain_dbi"]),
+                    base_capacity_scale=float(self.sat_cfg.get("capacity_scale", 1.0)),
+                    raan_rad=float(raan),
+                    plane_index=k,
+                )
+                visible = any(
+                    elevation_and_distance(q, cell.position_ecef(t))[0] >= threshold
+                    for t in times
+                    for q in probes
+                )
+                if visible:
+                    cells.append(cell)
+        if not cells:
+            raise ValueError("walker_slice: no satellite becomes visible from the service region")
+        for index, cell in enumerate(cells):
+            cell.cell_id = index
+        return cells
+
+    def _resample_constellation_epoch(self) -> None:
+        offset = float(getattr(self, "max_epoch_offset_s", 0.0))
+        if offset <= 0.0:
+            return
+        epoch = float(self.rng.uniform(0.0, offset))
+        for cell in self.satellites:
+            cell.epoch_offset_s = epoch
+
     def _make_ues(self) -> list[UE]:
         base_rate = float(self.traffic_cfg["mean_arrival_mbps"])
         spread = float(self.traffic_cfg.get("arrival_spread", 0.0))
@@ -201,8 +286,8 @@ class LEOMobilityEnv:
             ues.append(
                 UE(
                     ue_id=index,
-                    latitude_rad=float(self.rng.uniform(-0.04, 0.04)),
-                    longitude_rad=float(self.rng.uniform(-0.05, 0.05)),
+                    latitude_rad=float(self.rng.uniform(-self.UE_LAT_HALF_RAD, self.UE_LAT_HALF_RAD)),
+                    longitude_rad=float(self.rng.uniform(-self.UE_LON_HALF_RAD, self.UE_LON_HALF_RAD)),
                     mean_arrival_mbps=rate,
                     packet_size_bits=int(self.traffic_cfg["packet_size_bits"]),
                     deadline_s=float(self.traffic_cfg["deadline_ms"]) / 1000.0,
@@ -218,6 +303,7 @@ class LEOMobilityEnv:
             self.rng = np.random.default_rng(seed)
             self.channel.rng = self.rng
             self.events.rng = self.rng
+        self._resample_constellation_epoch()
         self.step_index = 0
         self.time_s = 0.0
         self.last_utilization.fill(0.0)

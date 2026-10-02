@@ -1,0 +1,14 @@
+# TWC environment: adjacent planes of a Starlink-like Walker shell
+# (550 km, 53 deg, 22 satellites per plane). Satellites that never become
+# visible from the service region within an episode are omitted.
+satellite:
+  altitude_km: 550.0
+  inclination_deg: 53.0
+  orbital_period_s: auto
+  constellation:
+    type: walker_slice
+    planes: 2
+    sats_per_plane: 22
+    raan_spacing_deg: 5.0
+    random_epoch: true
+    visibility_margin_deg: 5.0
