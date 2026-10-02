@@ -69,8 +69,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--rate", type=float, default=None, help="override per-UE traffic (Mb/s)")
     parser.add_argument("--smoke", action="store_true", help="tiny run to check the script")
+    parser.add_argument("--offsets", nargs="+", type=float, default=[2.0, 3.0, 4.0], help="execution offsets (dB)")
+    parser.add_argument("--ttts", nargs="+", type=int, default=[1, 2, 3], help="time-to-trigger (epochs)")
+    parser.add_argument("--tag", default="", help="suffix for the output CSV")
     args = parser.parse_args()
-    offsets, ttts, seeds = ((2.0, 3.0, 4.0), (1, 2, 3), VALIDATION_SEEDS)
+    offsets, ttts, seeds = (tuple(args.offsets), tuple(args.ttts), VALIDATION_SEEDS)
     if args.smoke:
         offsets, ttts, seeds = (2.0,), (1, 2), (20,)
     jobs = [
@@ -79,7 +82,7 @@ def main() -> None:
     ]
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         rows = list(pool.map(run, jobs))
-    out = ROOT / "outputs" / "twc" / ("cho_sweep_smoke.csv" if args.smoke else "cho_sweep.csv")
+    out = ROOT / "outputs" / "twc" / ("cho_sweep_smoke.csv" if args.smoke else f"cho_sweep{args.tag}.csv")
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
