@@ -137,6 +137,9 @@ class LEOMobilityEnv:
         self._active_effects = self.events.effects(0)
         self._last_ho_outcomes = np.zeros(self.num_agents, dtype=np.float64)
         self._last_handover_started = np.zeros(self.num_agents, dtype=np.float64)
+        # Fraction of the current epoch lost to handover execution
+        # (TR 38.821 Sec. 7.3.2.1.1: DL interruption ~ 2 RTT + processing).
+        self._ho_interruption = np.zeros(self.num_agents, dtype=np.float64)
         self._last_agent_outcomes = np.zeros((self.num_agents, 6), dtype=np.float64)
         self._last_agent_active = np.zeros(self.num_agents, dtype=np.float64)
         self.observed_sinr = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
@@ -621,6 +624,7 @@ class LEOMobilityEnv:
                         * target_link.packet_success_probability
                         * np.exp(-max(0.0, pressure - 1.0))
                     )
+                self._ho_interruption[ue.ue_id] = self._ho_interruption_fraction()
                 if target is not None and self.rng.random() < probability:
                     old_primary = ue.primary_cell
                     returning_to_previous = target == ue.last_primary_cell
@@ -645,6 +649,11 @@ class LEOMobilityEnv:
             elif ue.state == MobilityState.COOLDOWN and ue.protocol_timer == 0:
                 ue.state = MobilityState.SINGLE
         return counters
+
+    def _ho_interruption_fraction(self) -> float:
+        interruption_ms = float(self.protocol_cfg.get("ho_interruption_ms", 0.0))
+        processing_ms = float(self.protocol_cfg.get("ho_processing_ms", 0.0))
+        return float(np.clip((interruption_ms + processing_ms) / 1000.0 / self.interval_s, 0.0, 1.0))
 
     def _apply_actions(self, actions: np.ndarray, masks: np.ndarray) -> dict[str, int]:
         counters = {
@@ -905,6 +914,7 @@ class LEOMobilityEnv:
             else:
                 rate = primary_rate
                 probability = primary_success
+            rate *= 1.0 - self._ho_interruption[ue.ue_id]
             stream_rate = min(rate, ue.queue_packets * ue.packet_size_bits / max(self.interval_s, 1e-8))
             expected_goodput[ue.ue_id] = stream_rate * probability
             useful_bits += stream_rate * self.interval_s
@@ -1075,6 +1085,7 @@ class LEOMobilityEnv:
         actions = np.asarray(actions, dtype=np.int64)
         if actions.shape != (self.num_agents,):
             raise ValueError(f"actions must have shape {(self.num_agents,)}, got {actions.shape}")
+        self._ho_interruption.fill(0.0)
         protocol_counts = self._advance_protocols()
         masks = self.action_masks()
         valid_action_count = float(np.sum(masks))
@@ -1162,6 +1173,8 @@ class LEOMobilityEnv:
             "control_cost": float(control_cost),
             "resource_cost": float(control_cost),
             "outage_cost": float(outage_cost),
+            # Preparation requests per active UE and epoch (signaling constraint).
+            "signaling_cost": float(action_counts.get("preparation_requested", 0)) / (active_count + epsilon),
             "outage_ratio": float(outage_cost),
             "dro": float(tx_metrics["duplicated_bits"] / (tx_metrics["useful_bits"] + epsilon)),
             "mean_valid_action_count": valid_action_count / self.num_agents,

@@ -122,3 +122,43 @@ def test_load_config_sets_population():
         _cfg([CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml"])
     )
     assert env.num_agents == 24
+
+
+TWC = [CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml"]
+
+
+def test_ho_interruption_is_off_by_default_and_2rtt_in_twc():
+    assert LEOMobilityEnv(_cfg())._ho_interruption_fraction() == 0.0
+    env = LEOMobilityEnv(_cfg(TWC))
+    assert np.isclose(env._ho_interruption_fraction(), 0.05154)
+
+
+def test_interruption_reduces_the_delivered_rate_in_the_resolution_epoch():
+    env = LEOMobilityEnv(_cfg(TWC))
+    env.reset(seed=5)
+    stay = np.zeros(env.num_agents, dtype=np.int64)
+    env.step(stay)
+    ue = env.ues[0]
+    # Force UE 0 to resolve a switch in the next epoch.
+    from leo_mappo.ue import MobilityState
+
+    target = env.candidates[0][0]
+    ue.state, ue.secondary_cell, ue.protocol_timer = MobilityState.SWITCHING, target, 1
+    env.step(stay)
+    assert np.isclose(env._ho_interruption[0], env._ho_interruption_fraction())
+    assert np.all(env._ho_interruption[1:] == 0.0)
+
+
+def test_signaling_cost_counts_preparation_requests_per_active_ue():
+    env = LEOMobilityEnv(_cfg(TWC))
+    env.reset(seed=6)
+    out = env.step(np.zeros(env.num_agents, dtype=np.int64))
+    assert out.info["signaling_cost"] == 0.0
+    actions = np.zeros(env.num_agents, dtype=np.int64)
+    actions[:] = env.prepare_start  # request preparation towards candidate 1
+    masks = env._build_output_state()[2]
+    valid = masks[np.arange(env.num_agents), actions] > 0
+    out = env.step(np.where(valid, actions, 0))
+    assert out.info["signaling_cost"] > 0.0
+    expected = out.info["preparation_requested"] / (out.info["active_ue_count"] + 1e-8)
+    assert np.isclose(out.info["signaling_cost"], expected)

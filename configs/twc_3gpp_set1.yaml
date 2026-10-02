@@ -14,3 +14,8 @@ channel:
   ue_gain_dbi: 0.0                 # handheld
   noise_figure_db: 7.0             # handheld
   interference_dbm: -104.0         # same density as the JSAC floor (-114 dBm/MHz) over 10 MHz
+protocol:
+  # TR 38.821 Sec. 7.3.2.1.1: DL interruption ~ 2 RTT (RRC processing excluded).
+  # LEO-600 transparent payload, worst-case RTT 25.77 ms -> 51.54 ms.
+  ho_interruption_ms: 51.54
+  ho_processing_ms: 0.0
