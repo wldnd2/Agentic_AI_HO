@@ -187,6 +187,36 @@ class LEOMobilityEnv:
     def _constellation_cfg(self) -> dict:
         return dict(self.sat_cfg.get("constellation", {}) or {})
 
+    def _service_radius_rad(self) -> float | None:
+        """Radius of a circular service area (one earth-fixed beam); None keeps
+        the legacy rectangular area."""
+        radius_km = (self.config.get("service_area", {}) or {}).get("radius_km")
+        return None if radius_km is None else float(radius_km) * 1e3 / 6_371_000.0
+
+    def _region_probe_offsets(self) -> list[tuple[float, float]]:
+        radius = self._service_radius_rad()
+        if radius is None:
+            return [
+                (la, lo)
+                for la in (-self.UE_LAT_HALF_RAD, 0.0, self.UE_LAT_HALF_RAD)
+                for lo in (-self.UE_LON_HALF_RAD, 0.0, self.UE_LON_HALF_RAD)
+            ]
+        return [(0.0, 0.0)] + [
+            (radius * np.sin(a), radius * np.cos(a)) for a in np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False)
+        ]
+
+    def _link_budget(self) -> tuple[float, float, float]:
+        """Return (bandwidth_hz, tx_power_dbm, tx_gain_dbi). With
+        eirp_density_dbw_per_mhz set (3GPP TR 38.821 Table 6.1.1.1-1/2), the
+        transmit power follows from EIRP density, bandwidth and boresight gain."""
+        bandwidth_mhz = float(self.sat_cfg["bandwidth_mhz"])
+        gain = float(self.sat_cfg["tx_gain_dbi"])
+        density = self.sat_cfg.get("eirp_density_dbw_per_mhz")
+        if density is None:
+            return bandwidth_mhz * 1e6, float(self.sat_cfg["tx_power_dbm"]), gain
+        eirp_dbm = float(density) + 30.0 + 10.0 * np.log10(bandwidth_mhz)
+        return bandwidth_mhz * 1e6, eirp_dbm - gain, gain
+
     def _make_satellites(self) -> list[SatelliteCell]:
         if self._constellation_cfg().get("type", "local_slice") == "walker_slice":
             return self._make_walker_slice()
@@ -232,12 +262,13 @@ class LEOMobilityEnv:
         horizon_s += self.max_epoch_offset_s
         margin = np.radians(float(cfg.get("visibility_margin_deg", 5.0)))
         threshold = np.radians(float(self.env_cfg["min_elevation_deg"])) - margin
-        probes = [
-            ground_position_ecef(la, lo)
-            for la in (-self.UE_LAT_HALF_RAD, 0.0, self.UE_LAT_HALF_RAD)
-            for lo in (-self.UE_LON_HALF_RAD, 0.0, self.UE_LON_HALF_RAD)
-        ]
+        probes = [ground_position_ecef(la, lo) for la, lo in self._region_probe_offsets()]
         times = np.arange(0.0, horizon_s + 1e-9, 5.0)
+        bandwidth_hz, tx_power_dbm, tx_gain_dbi = self._link_budget()
+        beam_cfg = dict(self.sat_cfg.get("beam", {}) or {})
+        earth_fixed = beam_cfg.get("type") == "earth_fixed"
+        beam_center = ground_position_ecef(0.0, 0.0) if earth_fixed else None
+        aperture_radius = float(beam_cfg.get("aperture_diameter_m", 0.0)) / 2.0 if earth_fixed else 0.0
         cells: list[SatelliteCell] = []
         for k in range(planes):
             raan = (k - (planes - 1) / 2.0) * raan_spacing
@@ -249,12 +280,14 @@ class LEOMobilityEnv:
                     inclination_rad=inclination,
                     phase_rad=phase,
                     angular_rate_rad_s=rate,
-                    bandwidth_hz=float(self.sat_cfg["bandwidth_mhz"]) * 1e6,
-                    tx_power_dbm=float(self.sat_cfg["tx_power_dbm"]),
-                    tx_gain_dbi=float(self.sat_cfg["tx_gain_dbi"]),
+                    bandwidth_hz=bandwidth_hz,
+                    tx_power_dbm=tx_power_dbm,
+                    tx_gain_dbi=tx_gain_dbi,
                     base_capacity_scale=float(self.sat_cfg.get("capacity_scale", 1.0)),
                     raan_rad=float(raan),
                     plane_index=k,
+                    beam_center_ecef=beam_center,
+                    aperture_radius_m=aperture_radius,
                 )
                 visible = any(
                     elevation_and_distance(q, cell.position_ecef(t))[0] >= threshold
@@ -281,13 +314,22 @@ class LEOMobilityEnv:
         base_rate = float(self.traffic_cfg["mean_arrival_mbps"])
         spread = float(self.traffic_cfg.get("arrival_spread", 0.0))
         ues = []
+        radius = self._service_radius_rad()
         for index in range(self.num_agents):
             rate = base_rate * self.rng.uniform(1.0 - spread, 1.0 + spread)
+            if radius is None:
+                lat = float(self.rng.uniform(-self.UE_LAT_HALF_RAD, self.UE_LAT_HALF_RAD))
+                lon = float(self.rng.uniform(-self.UE_LON_HALF_RAD, self.UE_LON_HALF_RAD))
+            else:
+                # Uniform in a disk (3GPP calibration: UEs uniform in the beam cell).
+                r = radius * np.sqrt(self.rng.uniform())
+                phi = self.rng.uniform(0.0, 2.0 * np.pi)
+                lat, lon = float(r * np.sin(phi)), float(r * np.cos(phi))
             ues.append(
                 UE(
                     ue_id=index,
-                    latitude_rad=float(self.rng.uniform(-self.UE_LAT_HALF_RAD, self.UE_LAT_HALF_RAD)),
-                    longitude_rad=float(self.rng.uniform(-self.UE_LON_HALF_RAD, self.UE_LON_HALF_RAD)),
+                    latitude_rad=lat,
+                    longitude_rad=lon,
                     mean_arrival_mbps=rate,
                     packet_size_bits=int(self.traffic_cfg["packet_size_bits"]),
                     deadline_s=float(self.traffic_cfg["deadline_ms"]) / 1000.0,

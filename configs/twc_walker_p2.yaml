@@ -1,8 +1,8 @@
 # TWC environment: adjacent planes of a Starlink-like Walker shell
-# (550 km, 53 deg, 22 satellites per plane). Satellites that never become
+# (600 km = 3GPP LEO-600, 53 deg, 22 satellites per plane). Satellites that never become
 # visible from the service region within an episode are omitted.
 satellite:
-  altitude_km: 550.0
+  altitude_km: 600.0
   inclination_deg: 53.0
   orbital_period_s: auto
   constellation:

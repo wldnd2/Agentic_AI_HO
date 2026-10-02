@@ -22,6 +22,8 @@ ENVS = {
     "JSAC V3": [],
     "Walker P2": [CFG / "twc_walker_p2.yaml"],
     "Walker P3": [CFG / "twc_walker_p3.yaml"],
+    "P3+Set1": [CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml"],
+    "P3+Set2": [CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set2.yaml"],
 }
 
 
@@ -57,8 +59,11 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ues", type=int, default=12)
     parser.add_argument("--episodes", type=int, default=4)
+    parser.add_argument("--only", nargs="*", default=None, help="subset of environment names")
     args = parser.parse_args()
     for name, extra in ENVS.items():
+        if args.only and name not in args.only:
+            continue
         measure(name, extra, args.ues, args.episodes)
 
 

@@ -1,0 +1,15 @@
+# 3GPP TR 38.821 V16.2.0, S-band LEO-600, Set-2 (Table 6.1.1.1-2); used for
+# evaluation-only sensitivity analysis.
+satellite:
+  eirp_density_dbw_per_mhz: 28.0
+  tx_gain_dbi: 24.0
+  bandwidth_mhz: 10.0
+  beam:
+    type: earth_fixed
+    aperture_diameter_m: 1.0       # 3 dB beamwidth 8.83 deg
+service_area:
+  radius_km: 45.0                  # half of the 90 km Set-2 nadir beam diameter
+channel:
+  ue_gain_dbi: 0.0
+  noise_figure_db: 7.0
+  interference_dbm: -104.0

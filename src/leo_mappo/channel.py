@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .satellite import SatelliteCell, elevation_and_distance
+from .satellite import SatelliteCell, beam_pattern_loss_db, elevation_and_distance, off_axis_angle_rad
 
 SPEED_OF_LIGHT = 299_792_458.0
 
@@ -53,15 +53,24 @@ class ChannelModel:
         min_elevation_rad: float,
         extra_loss_db: float = 0.0,
     ) -> LinkResult:
-        elevation, distance = elevation_and_distance(ue_position, satellite.position_ecef(time_s))
+        satellite_position = satellite.position_ecef(time_s)
+        elevation, distance = elevation_and_distance(ue_position, satellite_position)
         visible = elevation >= min_elevation_rad
         wavelength = SPEED_OF_LIGHT / self.carrier_hz
+        pattern_loss_db = 0.0
+        if satellite.beam_center_ecef is not None and satellite.aperture_radius_m > 0.0:
+            pattern_loss_db = beam_pattern_loss_db(
+                off_axis_angle_rad(satellite_position, satellite.beam_center_ecef, ue_position),
+                satellite.aperture_radius_m,
+                wavelength,
+            )
         fspl_db = 20.0 * np.log10(max(1.0, 4.0 * np.pi * distance / wavelength))
         elevation_loss = 1.5 / max(0.2, np.sin(max(elevation, 0.01)))
         shadow_db = self._shadowing(ue_id, satellite.cell_id, extra_loss_db)
         rx_dbm = (
             satellite.tx_power_dbm
             + satellite.tx_gain_dbi
+            - pattern_loss_db
             + self.ue_gain_dbi
             - fspl_db
             - self.atmospheric_loss_db

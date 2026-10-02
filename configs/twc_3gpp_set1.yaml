@@ -1,0 +1,16 @@
+# 3GPP TR 38.821 V16.2.0, S-band LEO-600, Set-1 (Table 6.1.1.1-1) with a
+# handheld UE (Table 6.1.1.1-3). Each satellite serves the area with one
+# earth-fixed beam; UEs are uniform within one beam footprint.
+satellite:
+  eirp_density_dbw_per_mhz: 34.0   # Set-1 S-band LEO-600
+  tx_gain_dbi: 30.0                # Set-1 max Tx gain
+  bandwidth_mhz: 10.0              # 30 MHz per beam with frequency re-use 3 (Table 6.1.1.1-5, option 2)
+  beam:
+    type: earth_fixed
+    aperture_diameter_m: 2.0       # equivalent aperture -> 3 dB beamwidth 4.41 deg
+service_area:
+  radius_km: 25.0                  # half of the 50 km Set-1 nadir beam diameter
+channel:
+  ue_gain_dbi: 0.0                 # handheld
+  noise_figure_db: 7.0             # handheld
+  interference_dbm: -104.0         # same density as the JSAC floor (-114 dBm/MHz) over 10 MHz

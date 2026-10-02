@@ -85,3 +85,40 @@ def test_epoch_offset_is_random_but_seed_reproducible():
     assert env.satellites[0].epoch_offset_s == first
     assert first != second
     assert 0.0 <= first <= env.max_epoch_offset_s
+
+
+def test_bessel_j1_reference_values():
+    from leo_mappo.satellite import bessel_j1
+
+    assert abs(bessel_j1(1.0) - 0.4400506) < 1e-6
+    assert abs(bessel_j1(5.0) + 0.3275791) < 1e-6
+    assert abs(bessel_j1(-1.0) + 0.4400506) < 1e-6
+
+
+def test_beam_pattern_matches_3gpp_beamwidths():
+    from leo_mappo.satellite import beam_pattern_loss_db
+
+    wavelength = 299_792_458.0 / 2e9
+    for diameter, beamwidth_deg in [(2.0, 4.4127), (1.0, 8.8320)]:
+        half = np.radians(beamwidth_deg / 2.0)
+        assert abs(beam_pattern_loss_db(half, diameter / 2.0, wavelength) - 3.0) < 0.05
+        assert beam_pattern_loss_db(0.0, diameter / 2.0, wavelength) == 0.0
+
+
+def test_set1_link_budget_and_service_area():
+    env = LEOMobilityEnv(_cfg([CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml"]))
+    cell = env.satellites[0]
+    assert np.isclose(cell.bandwidth_hz, 10e6)
+    # EIRP density 34 dBW/MHz over 10 MHz = 74 dBm; minus 30 dBi gain.
+    assert np.isclose(cell.tx_power_dbm, 44.0)
+    assert cell.beam_center_ecef is not None and np.isclose(cell.aperture_radius_m, 1.0)
+    centre = np.array([EARTH_RADIUS_M, 0.0, 0.0])
+    for ue in env.ues:
+        assert np.linalg.norm(ue.position - centre) <= 25.0e3 + 1.0
+
+
+def test_load_config_sets_population():
+    env = LEOMobilityEnv(
+        _cfg([CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml"])
+    )
+    assert env.num_agents == 24

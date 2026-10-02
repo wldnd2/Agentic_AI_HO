@@ -1,0 +1,7 @@
+# Training population and offered load for the TWC environment. The per-UE
+# rate is calibrated so that Max-SINR reaches an outage ratio of about 0.30
+# (JSAC V3 Max-SINR: 0.32) with 24 UEs under 3GPP Set-1.
+environment:
+  num_ues: 24
+traffic:
+  mean_arrival_mbps: 1.2
