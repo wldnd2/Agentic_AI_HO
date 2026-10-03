@@ -32,9 +32,12 @@ from train_twc import CFG, TWC_STACK  # noqa: E402
 RULES = {
     "a3": lambda: A3ConditionalHandover(prep_offset_db=1.0, exec_offset_db=1.0, ttt_steps=1),
     "t1": lambda: TimeBasedCHO(service_elevation_deg=75.0, lead_s=15.0, target_rule="geometry"),
-    "d2": lambda: LocationBasedCHO(thresh1_km=300.0, thresh2_km=1500.0, target_rule="load"),
+    "d2": lambda: LocationBasedCHO(thresh1_km=400.0, thresh2_km=1500.0, target_rule="load"),
     "maxsinr": lambda: max_sinr_policy,
 }
+# Compound-stress disturbances are active in epochs [60, 130) (twc_compound_eval.yaml).
+STRESS_WINDOW = (60, 130)
+WINDOW_KEYS = ("outage_ratio", "service_deficit", "signaling_cost", "handover_started")
 SUM_KEYS = (
     "outage_ratio", "service_deficit", "signaling_cost", "resource_cost", "handover_started",
     "handover_failure", "handover_success", "pingpong", "deadline_misses", "arrivals",
@@ -63,6 +66,8 @@ def run_job(job: tuple) -> dict:
     else:
         policy = RULES[method]()
     sums = {k: 0.0 for k in SUM_KEYS}
+    window = {k: 0.0 for k in WINDOW_KEYS}
+    window_steps = 0
     reward = 0.0
     for episode in range(episodes):
         obs, _, masks = env.reset(seed=10_000 * seed + episode)
@@ -77,6 +82,10 @@ def run_job(job: tuple) -> dict:
             reward += float(np.mean(out.rewards))
             for k in SUM_KEYS:
                 sums[k] += float(out.info.get(k, 0.0))
+            if STRESS_WINDOW[0] <= env.step_index - 1 < STRESS_WINDOW[1]:
+                window_steps += 1
+                for k in WINDOW_KEYS:
+                    window[k] += float(out.info.get(k, 0.0))
     n = episodes * steps
     return {
         "method": method, "run": None if run_dir is None else str(run_dir), "condition": condition, "seed": seed,
@@ -87,6 +96,11 @@ def run_job(job: tuple) -> dict:
         "deadline_violation": sums["deadline_misses"] / max(sums["arrivals"], 1.0),
         "duplication_fraction": sums["duplication_active_time_fraction"] / n,
         "prep_rejection": sums["preparation_rejected"] / max(sums["preparation_requested"], 1.0),
+        # Same epochs in both conditions, so nominal vs stress is a paired comparison.
+        "window_outage": window["outage_ratio"] / max(window_steps, 1),
+        "window_deficit": window["service_deficit"] / max(window_steps, 1),
+        "window_signaling": window["signaling_cost"] / max(window_steps, 1),
+        "window_ho_per_epoch": window["handover_started"] / max(window_steps, 1),
     }
 
 
@@ -109,7 +123,8 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("".join(json.dumps(r) + "\n" for r in rows))
 
-    keys = ("common_reward", "outage", "deficit", "signaling", "ho_per_epoch", "pingpong_ratio", "prep_rejection")
+    keys = ("common_reward", "outage", "deficit", "signaling", "ho_per_epoch", "pingpong_ratio",
+            "prep_rejection", "window_outage")
     print(f"{'condition':9s} {'method':24s} " + " ".join(f"{k[:12]:>12s}" for k in keys))
     for condition in args.conditions:
         for name in dict.fromkeys(r["method"] for r in rows):
