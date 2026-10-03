@@ -79,6 +79,11 @@ def main() -> None:
     parser.add_argument("--ttts", nargs="+", type=int, default=[1, 2, 3], help="time-to-trigger (epochs)")
     parser.add_argument("--tag", default="", help="suffix for the output CSV")
     parser.add_argument("--policy", choices=("a3", "t1", "d2"), default="a3")
+    parser.add_argument("--t1-elev", nargs="+", type=float, default=[30.0, 40.0, 50.0, 60.0])
+    parser.add_argument("--t1-lead", nargs="+", type=float, default=[5.0, 15.0])
+    parser.add_argument("--d2-th1", nargs="+", type=float, default=[500.0, 700.0, 900.0])
+    parser.add_argument("--d2-th2", nargs="+", type=float, default=[700.0, 900.0, 1100.0])
+    parser.add_argument("--rules", nargs="+", default=["geometry", "load"])
     args = parser.parse_args()
     offsets, ttts, seeds = (tuple(args.offsets), tuple(args.ttts), VALIDATION_SEEDS)
     if args.smoke:
@@ -87,10 +92,10 @@ def main() -> None:
     if args.policy == "a3":
         jobs = [(e, t, s, args.episodes, args.rate, steps, None) for e, t, s in itertools.product(offsets, ttts, seeds)]
     elif args.policy == "t1":
-        grid = itertools.product((30.0, 40.0, 50.0, 60.0), (5.0, 15.0), ("geometry", "load"))
+        grid = itertools.product(args.t1_elev, args.t1_lead, args.rules)
         jobs = [(0.0, 0, s, args.episodes, args.rate, steps, ("t1", *g)) for g in grid for s in seeds]
     else:
-        grid = itertools.product((500.0, 700.0, 900.0), (700.0, 900.0, 1100.0), ("geometry", "load"))
+        grid = itertools.product(args.d2_th1, args.d2_th2, args.rules)
         jobs = [(0.0, 0, s, args.episodes, args.rate, steps, ("d2", *g)) for g in grid for s in seeds]
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         rows = list(pool.map(run, jobs))
