@@ -12,3 +12,4 @@ satellite:
     raan_spacing_deg: 5.0
     random_epoch: true
     visibility_margin_deg: 5.0
+    filter_horizon_s: 420.0         # episode length of the TWC experiments

@@ -23,7 +23,9 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 from cho_baselines import A3ConditionalHandover, LocationBasedCHO, TimeBasedCHO  # noqa: E402
-from leo_mappo import LEOMobilityEnv, load_config  # noqa: E402
+from leo_mappo import LEOMobilityEnv, MAPPO, load_config  # noqa: E402
+from leo_mappo.egcmadqn import Components  # noqa: E402
+from leo_mappo.twc_wrappers import ComponentEnvWrapper  # noqa: E402
 from leo_mappo.baselines import max_sinr_policy  # noqa: E402
 from leo_mappo.egcmadqn import EGCExecutor, EGCMADQN  # noqa: E402
 from train_twc import CFG, TWC_STACK  # noqa: E402
@@ -54,15 +56,40 @@ def build_env(condition: str, seed: int) -> LEOMobilityEnv:
     return LEOMobilityEnv(cfg)
 
 
+class MAPPOExecutor:
+    """Memoryless MAPPO execution with the price input (C4) if it was trained with it."""
+
+    def __init__(self, env, run_dir: Path, run_config: dict, seed: int, deterministic: bool):
+        self.wrapper = ComponentEnvWrapper(env, Components(price_input=run_config["components"]["price_input"],
+                                                           guided_exploration=False, potential_shaping=False,
+                                                           dual_constraints=False))
+        self.coordinator = self.wrapper.coordinator
+        self.agent = MAPPO(self.wrapper.obs_dim, env.global_state_dim, env.action_dim, env.config["mappo"], seed,
+                           num_satellites=env.num_cells, candidate_count=env.candidate_count,
+                           eta_handover=float(env.reward_cfg["eta_handover"]))
+        self.agent.load(run_dir / "mappo_weights.npz")
+        self.deterministic = deterministic
+
+    def act(self, observations, masks):
+        return self.agent.act(self.wrapper._augment(observations), masks, deterministic=self.deterministic)[0]
+
+    def observe(self, step) -> None:
+        if self.coordinator is not None:
+            self.coordinator.update(step.requested_pressure)
+
+
 def run_job(job: tuple) -> dict:
-    method, run_dir, condition, seed, episodes = job
+    method, run_dir, condition, seed, episodes, mappo_deterministic = job
     env = build_env(condition, seed)
     steps = int(env.env_cfg["episode_steps"])
     executor = None
     if run_dir is not None:
         run_config = json.loads((Path(run_dir) / "run_config.json").read_text())
-        agent = EGCMADQN.from_checkpoint(Path(run_dir) / "egcmadqn_weights.npz", seed=seed)
-        executor = EGCExecutor(env, agent, run_config["components"]["price_input"], np.random.default_rng(seed))
+        if run_config.get("learner") == "mappo":
+            executor = MAPPOExecutor(env, Path(run_dir), run_config, seed, mappo_deterministic)
+        else:
+            agent = EGCMADQN.from_checkpoint(Path(run_dir) / "egcmadqn_weights.npz", seed=seed)
+            executor = EGCExecutor(env, agent, run_config["components"]["price_input"], np.random.default_rng(seed))
     else:
         policy = RULES[method]()
     sums = {k: 0.0 for k in SUM_KEYS}
@@ -113,10 +140,13 @@ def main() -> None:
     parser.add_argument("--conditions", nargs="+", default=["nominal"], choices=["nominal", "stress"])
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--tag", default="eval")
+    parser.add_argument("--mappo-deterministic", action="store_true",
+                        help="argmax MAPPO actions (default: sampled, as in the JSAC evaluation)")
     args = parser.parse_args()
 
-    jobs = [(m, None, c, s, args.episodes) for m in args.methods for c in args.conditions for s in args.seeds]
-    jobs += [(Path(r).name, r, c, s, args.episodes) for r in args.runs for c in args.conditions for s in args.seeds]
+    det = args.mappo_deterministic
+    jobs = [(m, None, c, s, args.episodes, det) for m in args.methods for c in args.conditions for s in args.seeds]
+    jobs += [(Path(r).name, r, c, s, args.episodes, det) for r in args.runs for c in args.conditions for s in args.seeds]
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         rows = list(pool.map(run_job, jobs))
     out = ROOT / "outputs" / "twc" / "eval" / f"{args.tag}.jsonl"

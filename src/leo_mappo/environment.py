@@ -261,8 +261,10 @@ class LEOMobilityEnv:
         rate = 2.0 * np.pi / period
         self.constellation_period_s = period
         self.max_epoch_offset_s = period / per_plane if bool(cfg.get("random_epoch", True)) else 0.0
-        horizon_s = float(self.env_cfg["episode_steps"]) * float(self.env_cfg["control_interval_s"])
-        horizon_s += self.max_epoch_offset_s
+        # The kept satellite set must not depend on the episode length (e.g. short
+        # smoke-test episodes), so the filter horizon can be fixed in the config.
+        default_horizon = float(self.env_cfg["episode_steps"]) * float(self.env_cfg["control_interval_s"])
+        horizon_s = float(cfg.get("filter_horizon_s", default_horizon)) + self.max_epoch_offset_s
         margin = np.radians(float(cfg.get("visibility_margin_deg", 5.0)))
         threshold = np.radians(float(self.env_cfg["min_elevation_deg"])) - margin
         probes = [ground_position_ecef(la, lo) for la, lo in self._region_probe_offsets()]

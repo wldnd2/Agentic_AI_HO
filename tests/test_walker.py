@@ -191,3 +191,11 @@ def test_compound_capacity_drop_targets_the_busiest_satellite():
     spec = next(s for s in env.events.realized_specs if s["type"] == "capacity_drop")
     assert spec.get("_resolved") and spec["satellite_id"] == busiest
     assert np.isclose(env.satellites[busiest].capacity_multiplier, 0.45)
+
+
+def test_kept_satellites_do_not_depend_on_episode_length():
+    full = LEOMobilityEnv(_cfg(TWC))
+    cfg = _cfg(TWC)
+    cfg["environment"]["episode_steps"] = 40
+    short = LEOMobilityEnv(cfg)
+    assert short.num_cells == full.num_cells == 14

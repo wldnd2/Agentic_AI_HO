@@ -69,3 +69,22 @@ def test_checkpoint_roundtrip(tmp_path):
     m = np.ones((4, 9))
     assert loaded.constraint_fingerprint and np.allclose(loaded.fingerprint, agent.fingerprint)
     assert np.allclose(loaded.q.forward(loaded.augment(x))[0], agent.q.forward(agent.augment(x))[0])
+
+
+def test_mappo_variants_train_and_reload(tmp_path):
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    for variant in ("mappo", "mappo_c234"):
+        out = tmp_path / variant
+        subprocess.run(
+            [sys.executable, str(root / "train_twc.py"), "--variant", variant, "--iterations", "2", "--smoke",
+             "--outdir", str(out)],
+            check=True, cwd=root, env={**__import__("os").environ, "PYTHONPATH": str(root / "src")},
+        )
+        sys.path.insert(0, str(root))
+        from eval_twc import run_job
+
+        row = run_job((variant, str(out), "nominal", 20, 1, False))
+        assert 0.0 <= row["outage"] <= 1.0
