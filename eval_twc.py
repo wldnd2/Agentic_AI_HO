@@ -34,7 +34,7 @@ from train_twc import CFG, TWC_STACK  # noqa: E402
 RULES = {
     "a3": lambda: A3ConditionalHandover(prep_offset_db=1.0, exec_offset_db=1.0, ttt_steps=1),
     "t1": lambda: TimeBasedCHO(service_elevation_deg=75.0, lead_s=15.0, target_rule="geometry"),
-    "d2": lambda: LocationBasedCHO(thresh1_km=400.0, thresh2_km=1500.0, target_rule="load"),
+    "d2": lambda: LocationBasedCHO(thresh1_km=300.0, thresh2_km=1500.0, target_rule="load"),
     "maxsinr": lambda: max_sinr_policy,
 }
 # Compound-stress disturbances are active in epochs [60, 130) (twc_compound_eval.yaml).
