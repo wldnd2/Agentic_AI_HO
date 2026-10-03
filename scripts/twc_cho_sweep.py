@@ -28,7 +28,7 @@ TWC = [
     CFG / "validation_dwell_15.yaml",
     CFG / "twc_walker_p3.yaml",
     CFG / "twc_3gpp_set1.yaml",
-    CFG / "twc_load_24ue.yaml",
+    CFG / "twc_load_24ue.yaml", CFG / "twc_events.yaml",
 ]
 VALIDATION_SEEDS = (20, 21, 22)
 

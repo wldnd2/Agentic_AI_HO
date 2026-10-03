@@ -1140,6 +1140,7 @@ class LEOMobilityEnv:
         self.step_index += 1
         self.time_s += self.interval_s
         self._advance_latent_regimes()
+        self.events.resolve_dynamic_targets(self.step_index, [ue.primary_cell for ue in self.ues])
         self._active_effects = self.events.effects(self.step_index)
         for cell_id, satellite in enumerate(self.satellites):
             satellite.capacity_multiplier = float(self._active_effects.cell_capacity_multiplier[cell_id])

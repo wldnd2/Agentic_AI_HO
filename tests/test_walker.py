@@ -124,7 +124,7 @@ def test_load_config_sets_population():
     assert env.num_agents == 24
 
 
-TWC = [CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml"]
+TWC = [CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml", CFG / "twc_events.yaml"]
 
 
 def test_ho_interruption_is_off_by_default_and_2rtt_in_twc():
@@ -162,3 +162,32 @@ def test_signaling_cost_counts_preparation_requests_per_active_ue():
     assert out.info["signaling_cost"] > 0.0
     expected = out.info["preparation_requested"] / (out.info["active_ue_count"] + 1e-8)
     assert np.isclose(out.info["signaling_cost"], expected)
+
+
+def test_twc_events_hit_a_serving_satellite():
+    env = LEOMobilityEnv(_cfg(TWC))
+    env.reset(seed=8)
+    hits = 0
+    for _ in range(int(env.env_cfg["episode_steps"]) - 1):
+        out = env.step(np.zeros(env.num_agents, dtype=np.int64))
+        for spec in env.events.realized_specs:
+            if spec["type"] == "capacity_drop" and spec.get("_resolved"):
+                start, end = spec["start_step"], spec["start_step"] + spec["duration_steps"]
+                if start <= env.step_index < end:
+                    cell = spec["satellite_id"]
+                    assert env.satellites[cell].capacity_multiplier < 1.0
+                    hits += 1
+    assert hits > 0
+
+
+def test_compound_capacity_drop_targets_the_busiest_satellite():
+    env = LEOMobilityEnv(_cfg([*TWC, CFG / "twc_compound_eval.yaml"]))
+    env.reset(seed=9)
+    stay = np.zeros(env.num_agents, dtype=np.int64)
+    for _ in range(80):
+        env.step(stay)
+    serving = [u.primary_cell for u in env.ues]
+    busiest = max(set(serving), key=serving.count)
+    spec = next(s for s in env.events.realized_specs if s["type"] == "capacity_drop")
+    assert spec.get("_resolved") and spec["satellite_id"] == busiest
+    assert np.isclose(env.satellites[busiest].capacity_multiplier, 0.45)

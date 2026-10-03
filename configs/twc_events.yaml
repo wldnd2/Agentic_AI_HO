@@ -1,0 +1,34 @@
+# Nominal disturbances of the TWC environment: the V3 schedule (same ranges)
+# with satellites selected when an event starts, among the satellites that are
+# serving at least one UE at that time (indices of the visibility-filtered
+# Walker slice are not stable, so fixed satellite_choices are not used).
+events:
+  - type: blockage
+    start_step_range: [35, 85]
+    duration_steps_range: [25, 55]
+    severity_range: [8.0, 15.0]
+    satellite_selector: serving_random
+    ue_fraction_range: [0.30, 0.65]
+  - type: capacity_drop
+    start_step_range: [105, 165]
+    duration_steps_range: [35, 70]
+    severity_range: [0.45, 0.75]
+    satellite_selector: serving_random
+    ue_fraction_range: [0.30, 0.70]
+  - type: traffic_burst
+    start_step_range: [180, 245]
+    duration_steps_range: [35, 70]
+    severity_range: [1.35, 1.85]
+    ue_fraction_range: [0.30, 0.70]
+  - type: blockage
+    start_step_range: [255, 320]
+    duration_steps_range: [25, 55]
+    severity_range: [8.0, 15.0]
+    satellite_selector: serving_random
+    ue_fraction_range: [0.30, 0.65]
+  - type: capacity_drop
+    start_step_range: [325, 370]
+    duration_steps_range: [25, 50]
+    severity_range: [0.50, 0.80]
+    satellite_selector: serving_random
+    ue_fraction_range: [0.30, 0.70]

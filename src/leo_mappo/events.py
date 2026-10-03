@@ -65,6 +65,31 @@ class EventGenerator:
             count = max(1, int(round(self.num_ues * fraction)))
             self.ue_targets[index] = self.rng.choice(self.num_ues, size=min(count, self.num_ues), replace=False)
 
+    def resolve_dynamic_targets(self, step: int, primary_cells: list[int | None]) -> None:
+        """Bind events with a `satellite_selector` to a satellite when they start.
+
+        serving_random: uniformly among satellites currently serving >= 1 UE.
+        busiest:        the satellite currently serving the most UEs.
+        Satellite indices of a visibility-filtered Walker slice change with the
+        geometry, so fixed `satellite_id`/`satellite_choices` may hit a satellite
+        that is not visible at that time.
+        """
+        serving = [int(c) for c in primary_cells if c is not None]
+        if not serving:
+            return
+        for spec in self.realized_specs:
+            selector = spec.get("satellite_selector")
+            if selector is None or spec.get("_resolved") or step < int(spec.get("start_step", 0)):
+                continue
+            cells, counts = np.unique(np.asarray(serving), return_counts=True)
+            if selector == "busiest":
+                spec["satellite_id"] = int(cells[np.argmax(counts)])
+            elif selector == "serving_random":
+                spec["satellite_id"] = int(self.rng.choice(cells))
+            else:
+                raise ValueError(f"unknown satellite_selector {selector!r}")
+            spec["_resolved"] = True
+
     def effects(self, step: int) -> EventEffects:
         traffic = np.ones(self.num_ues, dtype=np.float64)
         capacity = np.ones(self.num_cells, dtype=np.float64)
@@ -80,9 +105,13 @@ class EventGenerator:
             if event_type == "traffic_burst":
                 traffic[targets] *= severity
             elif event_type == "capacity_drop":
+                if spec.get("satellite_selector") is not None and not spec.get("_resolved"):
+                    continue
                 cell_id = int(spec.get("satellite_id", 0)) % self.num_cells
                 capacity[cell_id] *= np.clip(severity, 0.05, 1.0)
             elif event_type == "blockage":
+                if spec.get("satellite_selector") not in (None, "all") and not spec.get("_resolved"):
+                    continue
                 cell_id = spec.get("satellite_id")
                 if cell_id is None:
                     loss[targets, :] += severity

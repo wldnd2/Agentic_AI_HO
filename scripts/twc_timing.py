@@ -24,7 +24,7 @@ from train_madqn import DEFAULT_CFG  # noqa: E402
 CFG = ROOT / "configs"
 TWC = [
     CFG / "validation_agentic_challenge_v3.yaml", CFG / "eta_handover_005.yaml", CFG / "validation_dwell_15.yaml",
-    CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml",
+    CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml", CFG / "twc_events.yaml",
 ]
 ROLLOUT = 128
 

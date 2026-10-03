@@ -9,7 +9,7 @@ from leo_mappo.ue import MobilityState
 CFG = Path(__file__).resolve().parents[1] / "configs"
 TWC = [
     CFG / "validation_agentic_challenge_v3.yaml", CFG / "eta_handover_005.yaml", CFG / "validation_dwell_15.yaml",
-    CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml",
+    CFG / "twc_walker_p3.yaml", CFG / "twc_3gpp_set1.yaml", CFG / "twc_load_24ue.yaml", CFG / "twc_events.yaml",
 ]
 
 
