@@ -58,6 +58,9 @@ VARIANTS: dict[str, Components] = {
     "no_c3": Components(dual_constraints=False),
     "no_c4": Components(price_input=False),
     "madqn": Components(False, False, False, False),
+    # Constrained MADQN without the planner (C3 only / C3 + prices).
+    "c3_only": Components(guided_exploration=False, potential_shaping=False, dual_constraints=True, price_input=False),
+    "c3_c4": Components(guided_exploration=False, potential_shaping=False, dual_constraints=True, price_input=True),
 }
 
 
