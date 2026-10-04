@@ -88,3 +88,38 @@ def test_mappo_variants_train_and_reload(tmp_path):
 
         row = run_job((variant, str(out), "nominal", 20, 1, False))
         assert 0.0 <= row["outage"] <= 1.0
+
+
+def test_relabeling_uses_current_multipliers():
+    from leo_mappo.egcmadqn import RelabelingReplayBuffer
+
+    lam = {"out": 0.0, "sig": 0.0}
+    buf = RelabelingReplayBuffer(10, 3, 4, np.random.default_rng(0),
+                                 lambda: (lam["out"], lam["sig"], 0.2, 0.16))
+    z = np.zeros((2, 3))
+    buf.add_components(z, np.array([0, 1]), np.full(2, -0.1), np.array([0.01, -0.01]),
+                       np.full(2, 0.4), np.full(2, 0.36), z, np.ones((2, 4)), np.zeros(2))
+    idx = np.array([0, 1])
+    assert np.allclose(buf.relabeled(idx), [-0.09, -0.11])
+    lam.update(out=1.0, sig=2.0)  # multipliers grow after the transitions were stored
+    assert np.allclose(buf.relabeled(idx), [-0.09 - 0.2 - 0.4, -0.11 - 0.2 - 0.4])
+
+
+def test_trainer_relabels_and_estimates_constraints_on_greedy_agents():
+    trainer = EGCTrainer(_env(), VARIANTS["proposed"], SMALL, 2, TrainerConfig(rollout_steps=8))
+    from leo_mappo.egcmadqn import RelabelingReplayBuffer
+
+    assert isinstance(trainer.agent.buffer, RelabelingReplayBuffer)
+    m = trainer.run_iteration(0, 100)  # epsilon = 1: nobody is greedy -> fall back to behaviour averages
+    assert m["greedy_signaling"] == m["signaling"]
+    m = trainer.run_iteration(99, 100)  # epsilon = 0.05: mostly greedy agents
+    assert 0.0 <= m["greedy_outage"] <= 1.0 and 0.0 <= m["greedy_signaling"] <= 1.0
+
+
+def test_v1_behaviour_is_still_available():
+    tc = TrainerConfig(rollout_steps=6, relabel_rewards=False, greedy_constraint_estimates=False, outage_target=0.15)
+    trainer = EGCTrainer(_env(), VARIANTS["proposed"], SMALL, 4, tc)
+    from leo_mappo.egcmadqn import RelabelingReplayBuffer
+
+    assert not isinstance(trainer.agent.buffer, RelabelingReplayBuffer)
+    assert np.isfinite(trainer.run_iteration(0, 2)["lambda_out"])

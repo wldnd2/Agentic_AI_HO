@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +34,7 @@ from train_twc import CFG, TWC_STACK  # noqa: E402
 RULES = {
     "a3": lambda: A3ConditionalHandover(prep_offset_db=1.0, exec_offset_db=1.0, ttt_steps=1),
     "t1": lambda: TimeBasedCHO(service_elevation_deg=75.0, lead_s=15.0, target_rule="geometry"),
-    "d2": lambda: LocationBasedCHO(thresh1_km=300.0, thresh2_km=1500.0, target_rule="load"),
+    "d2": lambda: LocationBasedCHO(thresh1_km=400.0, thresh2_km=1500.0, target_rule="load"),
     "maxsinr": lambda: max_sinr_policy,
 }
 # Compound-stress disturbances are active in epochs [60, 130) (twc_compound_eval.yaml).
@@ -147,8 +147,13 @@ def main() -> None:
     det = args.mappo_deterministic
     jobs = [(m, None, c, s, args.episodes, det) for m in args.methods for c in args.conditions for s in args.seeds]
     jobs += [(Path(r).name, r, c, s, args.episodes, det) for r in args.runs for c in args.conditions for s in args.seeds]
+    rows = [None] * len(jobs)
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        rows = list(pool.map(run_job, jobs))
+        futures = {pool.submit(run_job, job): k for k, job in enumerate(jobs)}
+        for done, future in enumerate(as_completed(futures), start=1):
+            rows[futures[future]] = future.result()
+            job = jobs[futures[future]]
+            print(f"  [{done}/{len(jobs)}] {job[0]} {job[2]} seed {job[3]}", flush=True)
     out = ROOT / "outputs" / "twc" / "eval" / f"{args.tag}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("".join(json.dumps(r) + "\n" for r in rows))

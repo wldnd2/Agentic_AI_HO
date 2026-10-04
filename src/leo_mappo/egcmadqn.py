@@ -11,8 +11,17 @@ C2  ephemeris potential-based shaping:
     with Phi = 0 at episode ends.
 C3  dual constraints on the outage and the preparation-signalling cost:
         r <- r - lambda_out (C_out - C_out_thr) - lambda_sig (C_sig - C_sig_thr),
-    with projected dual ascent on rollout averages after every iteration. The
-    normalised multipliers extend the training fingerprint.
+    with projected dual ascent after every iteration. The normalised
+    multipliers extend the training fingerprint. Two details matter for an
+    off-policy learner:
+    * reward relabelling - the replay buffer stores the reward components
+      (base reward, shaping, outage and signalling costs) and the Lagrangian
+      reward is recomputed with the *current* multipliers when a batch is
+      sampled, so that replayed transitions do not carry stale multipliers;
+    * target-policy constraint estimates - the multipliers are updated from the
+      decisions of agents that acted greedily in that epoch (exploratory
+      actions are excluded), because the constraint concerns the learned
+      policy, not the exploration noise.
 C4  satellite congestion prices (serving + candidates) appended to the input.
 
 The planner is used only during training (C1, C2); execution needs one forward
@@ -26,7 +35,7 @@ import numpy as np
 
 from .coordinator import SatellitePriceCoordinator
 from .environment import LEOMobilityEnv
-from .madqn import MADQN
+from .madqn import MADQN, ReplayBuffer
 from .reasoning import LookaheadReasoner
 
 
@@ -70,6 +79,42 @@ class DualVariable:
         return self.value / self.maximum
 
 
+class RelabelingReplayBuffer(ReplayBuffer):
+    """Replay buffer that recomputes the Lagrangian reward at sampling time.
+
+    reward = base + shaping - lambda_out (out - out_thr) - lambda_sig (sig - sig_thr),
+    with (lambda_out, lambda_sig, out_thr, sig_thr) supplied by `weights()`.
+    """
+
+    def __init__(self, capacity: int, obs_dim: int, action_dim: int, rng: np.random.Generator, weights):
+        super().__init__(capacity, obs_dim, action_dim, rng)
+        self.weights = weights
+        self.base = np.zeros(self.capacity, dtype=np.float32)
+        self.shaping = np.zeros(self.capacity, dtype=np.float32)
+        self.out_cost = np.zeros(self.capacity, dtype=np.float32)
+        self.sig_cost = np.zeros(self.capacity, dtype=np.float32)
+
+    def add_components(self, obs, actions, base, shaping, out_cost, sig_cost, next_obs, next_masks, dones) -> None:
+        n = len(actions)
+        idx = (self.pos + np.arange(n)) % self.capacity
+        self.base[idx] = base
+        self.shaping[idx] = shaping
+        self.out_cost[idx] = out_cost
+        self.sig_cost[idx] = sig_cost
+        super().add_batch(obs, actions, np.zeros(n), next_obs, next_masks, dones)
+
+    def relabeled(self, idx: np.ndarray) -> np.ndarray:
+        lam_out, lam_sig, out_thr, sig_thr = self.weights()
+        return (self.base[idx] + self.shaping[idx] - lam_out * (self.out_cost[idx] - out_thr)
+                - lam_sig * (self.sig_cost[idx] - sig_thr)).astype(np.float64)
+
+    def sample(self, batch_size: int):
+        idx = self.rng.integers(0, self.size, size=int(batch_size))
+        return (self.obs[idx].astype(np.float64), self.actions[idx], self.relabeled(idx),
+                self.next_obs[idx].astype(np.float64), self.next_masks[idx].astype(np.float64),
+                self.dones[idx].astype(np.float64))
+
+
 class EGCMADQN(MADQN):
     """MADQN whose fingerprint optionally carries the normalised multipliers."""
 
@@ -79,6 +124,18 @@ class EGCMADQN(MADQN):
         super().__init__(obs_dim, action_dim, config, seed)
         self.multipliers = np.zeros(2)
         self.fingerprint = self._compose(1.0, self.eps_end)
+        self.last_explore = np.zeros(0, dtype=bool)
+
+    def use_relabeling(self, weights) -> None:
+        """Switch to a relabelling replay buffer (before any transition is stored)."""
+        self.buffer = RelabelingReplayBuffer(self.buffer.capacity, self.obs_dim + self.FINGERPRINT_DIM,
+                                             self.action_dim, self.rng, weights)
+
+    def store_components(self, obs, actions, base, shaping, out_cost, sig_cost, next_obs, next_masks, done) -> None:
+        n = len(actions)
+        self.buffer.add_components(self.augment(obs), actions, np.full(n, base), np.asarray(shaping),
+                                   np.full(n, out_cost), np.full(n, sig_cost), self.augment(next_obs),
+                                   next_masks, np.full(n, float(done)))
 
     def _compose(self, progress: float, epsilon: float) -> np.ndarray:
         base = [progress, epsilon]
@@ -107,6 +164,7 @@ class EGCMADQN(MADQN):
         """epsilon-greedy whose exploratory draw follows the planner with prob. `guidance`."""
         actions = self.greedy(observations, masks)
         explore = self.rng.random(len(actions)) < epsilon
+        self.last_explore = explore
         for i in np.flatnonzero(explore):
             feasible = np.flatnonzero(masks[i] > 0.0)
             if planner_costs is not None and self.rng.random() < guidance:
@@ -150,8 +208,10 @@ class TrainerConfig:
     guidance_temperature: float = 0.5        # T_g
     guidance_decay_fraction: float = 0.4     # beta: 1 -> 0 over this fraction of training
     shaping_scale: float = 0.05              # kappa
-    outage_target: float = 0.15
+    outage_target: float = 0.20              # attainable level (validation: MADQN 0.21, tuned rules 0.31-0.41)
     signaling_target: float = 0.16           # ~ tuned A3 CHO signalling per UE and epoch
+    relabel_rewards: bool = True             # recompute the Lagrangian reward with current multipliers
+    greedy_constraint_estimates: bool = True # update multipliers from non-exploring agents only
     dual_learning_rate_out: float = 0.005
     dual_learning_rate_sig: float = 0.005
     dual_max: float = 10.0
@@ -180,6 +240,12 @@ class EGCTrainer:
         )
         self.dual_out = DualVariable(self.tc.outage_target, self.tc.dual_learning_rate_out, self.tc.dual_max)
         self.dual_sig = DualVariable(self.tc.signaling_target, self.tc.dual_learning_rate_sig, self.tc.dual_max)
+        self.relabel = self.tc.relabel_rewards
+        if self.relabel:
+            constrained = self.c.dual_constraints
+            self.agent.use_relabeling(lambda: (
+                self.dual_out.value if constrained else 0.0, self.dual_sig.value if constrained else 0.0,
+                self.tc.outage_target, self.tc.signaling_target))
         self.obs, _, self.masks = env.reset()
         if self.coordinator is not None:
             self.coordinator.reset()
@@ -223,6 +289,8 @@ class EGCTrainer:
         gamma = self.agent.gamma
         sums = {"common_reward": 0.0, "training_reward": 0.0, "outage": 0.0, "signaling": 0.0,
                 "handover_started": 0.0, "pingpong": 0.0, "handover_success": 0.0, "shaping": 0.0}
+        greedy = {"outage": 0.0, "active": 0.0, "requests": 0.0}
+        prep_lo, prep_hi = self.env.prepare_start, self.env.prepare_start + self.env.candidate_count
         for _ in range(self.tc.rollout_steps):
             z = self.inputs(self.obs)
             actions = self.agent.act_guided(z, self.masks, eps, beta, self.costs, self.tc.guidance_temperature)
@@ -247,7 +315,17 @@ class EGCTrainer:
                 phi_next = self._potential(next_costs, next_masks)
             shaping = (self.tc.shaping_scale * (gamma * phi_next - phi)
                        if self.c.potential_shaping else np.zeros(self.env.num_agents))
-            self.agent.store_vector(z, actions, reward + shaping, z_next, next_masks, step.done)
+            if self.relabel:
+                self.agent.store_components(z, actions, base, shaping, outage, signaling, z_next, next_masks, step.done)
+            else:
+                self.agent.store_vector(z, actions, reward + shaping, z_next, next_masks, step.done)
+            # Target-policy constraint statistics (agents that did not explore).
+            active = (step.agent_active > 0.0) if step.agent_active is not None else np.ones(len(actions), bool)
+            chosen = active & ~self.agent.last_explore
+            greedy["active"] += float(chosen.sum())
+            greedy["requests"] += float(np.sum(chosen & (actions >= prep_lo) & (actions < prep_hi)))
+            if step.agent_outcomes is not None:
+                greedy["outage"] += float(step.agent_outcomes[chosen, 1].sum())
             sums["common_reward"] += base
             sums["training_reward"] += reward
             sums["outage"] += outage
@@ -266,9 +344,16 @@ class EGCTrainer:
         n = float(self.tc.rollout_steps)
         metrics = {k: v / n for k, v in sums.items() if k not in ("pingpong", "handover_success")}
         metrics["pingpong_ratio"] = sums["pingpong"] / max(sums["handover_success"], 1.0)
+        if greedy["active"] > 0.0:
+            metrics["greedy_outage"] = greedy["outage"] / greedy["active"]
+            metrics["greedy_signaling"] = greedy["requests"] / greedy["active"]
+        else:
+            metrics["greedy_outage"], metrics["greedy_signaling"] = metrics["outage"], metrics["signaling"]
         if self.c.dual_constraints:
-            metrics["lambda_out"] = self.dual_out.update(metrics["outage"])
-            metrics["lambda_sig"] = self.dual_sig.update(metrics["signaling"])
+            use_greedy = self.tc.greedy_constraint_estimates
+            metrics["lambda_out"] = self.dual_out.update(metrics["greedy_outage"] if use_greedy else metrics["outage"])
+            metrics["lambda_sig"] = self.dual_sig.update(
+                metrics["greedy_signaling"] if use_greedy else metrics["signaling"])
         metrics.update({"epsilon": eps, "guidance": beta, **learn})
         return metrics
 

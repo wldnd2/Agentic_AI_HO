@@ -69,6 +69,10 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=TrainerConfig.guidance_temperature)
     parser.add_argument("--outage-target", type=float, default=TrainerConfig.outage_target)
     parser.add_argument("--signaling-target", type=float, default=TrainerConfig.signaling_target)
+    parser.add_argument("--no-relabel", action="store_true",
+                        help="v1 behaviour: store the Lagrangian reward with the multipliers of collection time")
+    parser.add_argument("--behavior-constraints", action="store_true",
+                        help="v1 behaviour: update multipliers from all (incl. exploring) agents")
     parser.add_argument("--checkpoint-every", type=int, default=100)
     parser.add_argument("--outdir", default=None)
     parser.add_argument("--smoke", action="store_true", help="short episodes and a small rollout")
@@ -82,6 +86,8 @@ def main() -> None:
         guidance_temperature=args.temperature,
         outage_target=args.outage_target,
         signaling_target=args.signaling_target,
+        relabel_rewards=not args.no_relabel,
+        greedy_constraint_estimates=not args.behavior_constraints,
     )
     agent_cfg = dict(AGENT_CFG)
     if args.smoke:
@@ -136,6 +142,8 @@ def main() -> None:
             if it % 50 == 0 or it == args.iterations - 1:
                 print(f"[{args.variant} s{args.seed}] it {it:4d} common {metrics['common_reward']:.4f} "
                       f"outage {metrics['outage']:.3f} signal {metrics['signaling']:.3f} "
+                      f"greedy-out {metrics.get('greedy_outage', metrics['outage']):.3f} "
+                      f"greedy-sig {metrics.get('greedy_signaling', metrics['signaling']):.3f} "
                       f"eps {metrics['epsilon']:.2f} beta {metrics['guidance']:.2f} "
                       f"{metrics['seconds']:.1f}s", flush=True)
     if is_mappo:
