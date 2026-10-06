@@ -73,6 +73,10 @@ def main() -> None:
                         help="v1 behaviour: store the Lagrangian reward with the multipliers of collection time")
     parser.add_argument("--behavior-constraints", action="store_true",
                         help="v1 behaviour: update multipliers from all (incl. exploring) agents")
+    parser.add_argument("--hysteretic-beta", type=float, default=1.0,
+                        help="hysteretic Q-learning step for negative TD errors (Liu et al., TWC 2024); 1 = off")
+    parser.add_argument("--fixed-lambda-out", type=float, default=None, help="fixed-penalty baseline")
+    parser.add_argument("--fixed-lambda-sig", type=float, default=None, help="fixed-penalty baseline")
     parser.add_argument("--checkpoint-every", type=int, default=100)
     parser.add_argument("--outdir", default=None)
     parser.add_argument("--smoke", action="store_true", help="short episodes and a small rollout")
@@ -88,8 +92,11 @@ def main() -> None:
         signaling_target=args.signaling_target,
         relabel_rewards=not args.no_relabel,
         greedy_constraint_estimates=not args.behavior_constraints,
+        fixed_lambda_out=args.fixed_lambda_out,
+        fixed_lambda_sig=args.fixed_lambda_sig,
     )
     agent_cfg = dict(AGENT_CFG)
+    agent_cfg["hysteretic_beta"] = args.hysteretic_beta
     if args.smoke:
         agent_cfg.update(warmup_transitions=200, batch_size=64, updates_per_iteration=2)
     env = build_env(args.seed, args.smoke)

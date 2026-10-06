@@ -71,6 +71,7 @@ class MADQN:
         self.eps_fraction = float(config.get("epsilon_decay_fraction", 0.4))
         self.max_grad_norm = float(config.get("max_grad_norm", 10.0))
         self.huber_delta = float(config.get("huber_delta", 1.0))
+        self.hysteretic_beta = float(config.get("hysteretic_beta", 1.0))
         in_dim = self.obs_dim + self.FINGERPRINT_DIM
         self.q = MLP(in_dim, self.hidden, self.action_dim, self.rng)
         self.target = MLP(in_dim, self.hidden, self.action_dim, self.rng)
@@ -138,6 +139,10 @@ class MADQN:
             q_sa = q[np.arange(len(a)), a]
             err = q_sa - y
             grad_err = np.clip(err, -self.huber_delta, self.huber_delta) / len(a)
+            if self.hysteretic_beta != 1.0:
+                # Hysteretic Q-learning: smaller step when the TD error is negative
+                # (y < Q), i.e. when a value would be decreased.
+                grad_err = np.where(err > 0.0, self.hysteretic_beta * grad_err, grad_err)
             grad_out = np.zeros_like(q)
             grad_out[np.arange(len(a)), a] = grad_err
             self.optimizer.step(self.q.backward(grad_out, cache), self.max_grad_norm)

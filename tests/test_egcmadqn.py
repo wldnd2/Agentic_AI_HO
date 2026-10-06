@@ -123,3 +123,27 @@ def test_v1_behaviour_is_still_available():
 
     assert not isinstance(trainer.agent.buffer, RelabelingReplayBuffer)
     assert np.isfinite(trainer.run_iteration(0, 2)["lambda_out"])
+
+
+def test_fixed_penalty_keeps_multipliers_constant():
+    tc = TrainerConfig(rollout_steps=6, fixed_lambda_out=0.6, fixed_lambda_sig=1.0)
+    trainer = EGCTrainer(_env(), VARIANTS["c3_only"], SMALL, 5, tc)
+    for it in range(3):
+        m = trainer.run_iteration(it, 3)
+    assert m["lambda_out"] == 0.6 and m["lambda_sig"] == 1.0
+
+
+def test_hysteretic_update_only_damps_value_decreases():
+    from leo_mappo.madqn import MADQN
+
+    cfg = dict(SMALL, warmup_transitions=4, batch_size=4, updates_per_iteration=1, target_update_interval=10**6)
+    base = MADQN(3, 2, cfg, 0)
+    hyst = MADQN(3, 2, {**cfg, "hysteretic_beta": 0.0}, 0)
+    obs = np.ones((4, 3))
+    for agent, reward in ((base, -50.0), (hyst, -50.0)):  # very negative reward -> Q must decrease
+        agent.store(obs, np.zeros(4, dtype=np.int64), reward, obs, np.ones((4, 2)), True)
+    q = lambda agent: agent.q.forward(agent.augment(obs))[0][0, 0]
+    before_h, before_b = q(hyst), q(base)
+    base.update(); hyst.update()
+    assert np.isclose(q(hyst), before_h)        # beta = 0: a value decrease is fully damped
+    assert q(base) < before_b                   # the standard update decreases the value

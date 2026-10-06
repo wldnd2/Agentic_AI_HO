@@ -214,6 +214,8 @@ class TrainerConfig:
     outage_target: float = 0.20              # attainable level (validation: MADQN 0.21, tuned rules 0.31-0.41)
     signaling_target: float = 0.16           # ~ tuned A3 CHO signalling per UE and epoch
     relabel_rewards: bool = True             # recompute the Lagrangian reward with current multipliers
+    fixed_lambda_out: float | None = None    # fixed-penalty baseline: constant multipliers, no dual ascent
+    fixed_lambda_sig: float | None = None
     greedy_constraint_estimates: bool = True # update multipliers from non-exploring agents only
     dual_learning_rate_out: float = 0.005
     dual_learning_rate_sig: float = 0.005
@@ -241,8 +243,11 @@ class EGCTrainer:
                               use_coordination=self.c.price_input, use_constraint=False)
             if self.c.needs_planner else None
         )
-        self.dual_out = DualVariable(self.tc.outage_target, self.tc.dual_learning_rate_out, self.tc.dual_max)
-        self.dual_sig = DualVariable(self.tc.signaling_target, self.tc.dual_learning_rate_sig, self.tc.dual_max)
+        fixed = self.tc.fixed_lambda_out is not None or self.tc.fixed_lambda_sig is not None
+        self.dual_out = DualVariable(self.tc.outage_target, 0.0 if fixed else self.tc.dual_learning_rate_out,
+                                     self.tc.dual_max, initial=self.tc.fixed_lambda_out or 0.0)
+        self.dual_sig = DualVariable(self.tc.signaling_target, 0.0 if fixed else self.tc.dual_learning_rate_sig,
+                                     self.tc.dual_max, initial=self.tc.fixed_lambda_sig or 0.0)
         self.relabel = self.tc.relabel_rewards
         if self.relabel:
             constrained = self.c.dual_constraints
