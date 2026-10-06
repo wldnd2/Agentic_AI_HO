@@ -47,12 +47,19 @@ SUM_KEYS = (
 )
 
 
-def build_env(condition: str, seed: int) -> LEOMobilityEnv:
+TRAIN_UES, TRAIN_RATE = 24, 1.2
+
+
+def build_env(condition: str, seed: int, ues: int | None = None, rate: float | None = None) -> LEOMobilityEnv:
     stack = [p for p in TWC_STACK if p.exists()]
     if condition == "stress":
         stack.append(CFG / "twc_compound_eval.yaml")
     cfg = load_config(CFG / "default.yaml", stack)
     cfg["environment_seed"] = seed
+    if ues is not None:
+        cfg["environment"]["num_ues"] = int(ues)
+    if rate is not None:
+        cfg["traffic"]["mean_arrival_mbps"] = float(rate)
     return LEOMobilityEnv(cfg)
 
 
@@ -64,9 +71,13 @@ class MAPPOExecutor:
                                                            guided_exploration=False, potential_shaping=False,
                                                            dual_constraints=False))
         self.coordinator = self.wrapper.coordinator
-        self.agent = MAPPO(self.wrapper.obs_dim, env.global_state_dim, env.action_dim, env.config["mappo"], seed,
-                           num_satellites=env.num_cells, candidate_count=env.candidate_count,
-                           eta_handover=float(env.reward_cfg["eta_handover"]))
+        # The critic input depends on the training population; only the actor is used here,
+        # so the networks are built with the training dimensions and run on any population.
+        ref = env if env.num_agents == TRAIN_UES else build_env("nominal", seed, TRAIN_UES, TRAIN_RATE)
+        ref_wrapper = ComponentEnvWrapper(ref, self.wrapper.c)
+        self.agent = MAPPO(ref_wrapper.obs_dim, ref.global_state_dim, ref.action_dim, ref.config["mappo"], seed,
+                           num_satellites=ref.num_cells, candidate_count=ref.candidate_count,
+                           eta_handover=float(ref.reward_cfg["eta_handover"]))
         self.agent.load(run_dir / "mappo_weights.npz")
         self.deterministic = deterministic
 
@@ -79,8 +90,9 @@ class MAPPOExecutor:
 
 
 def run_job(job: tuple) -> dict:
-    method, run_dir, condition, seed, episodes, mappo_deterministic = job
-    env = build_env(condition, seed)
+    method, run_dir, condition, seed, episodes, mappo_deterministic = job[:6]
+    ues, rate = (job[6], job[7]) if len(job) > 6 else (None, None)
+    env = build_env(condition, seed, ues, rate)
     steps = int(env.env_cfg["episode_steps"])
     executor = None
     if run_dir is not None:
@@ -116,6 +128,7 @@ def run_job(job: tuple) -> dict:
     n = episodes * steps
     return {
         "method": method, "run": None if run_dir is None else str(run_dir), "condition": condition, "seed": seed,
+        "num_ues": env.num_agents, "rate_mbps": float(env.config["traffic"]["mean_arrival_mbps"]),
         "common_reward": reward / n, "outage": sums["outage_ratio"] / n, "deficit": sums["service_deficit"] / n,
         "signaling": sums["signaling_cost"] / n, "resource": sums["resource_cost"] / n,
         "ho_per_epoch": sums["handover_started"] / n, "ho_failure_per_epoch": sums["handover_failure"] / n,
@@ -140,13 +153,23 @@ def main() -> None:
     parser.add_argument("--conditions", nargs="+", default=["nominal"], choices=["nominal", "stress"])
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--tag", default="eval")
+    parser.add_argument("--ues", nargs="+", type=int, default=[None],
+                        help="UE populations to evaluate (default: the training population, 24)")
+    parser.add_argument("--load", choices=["per-ue", "total"], default="per-ue",
+                        help="per-ue: keep 1.2 Mb/s per UE; total: keep the training total load (24 x 1.2 Mb/s)")
     parser.add_argument("--mappo-deterministic", action="store_true",
                         help="argmax MAPPO actions (default: sampled, as in the JSAC evaluation)")
     args = parser.parse_args()
 
     det = args.mappo_deterministic
-    jobs = [(m, None, c, s, args.episodes, det) for m in args.methods for c in args.conditions for s in args.seeds]
-    jobs += [(Path(r).name, r, c, s, args.episodes, det) for r in args.runs for c in args.conditions for s in args.seeds]
+    pops = []
+    for n in args.ues:
+        rate = None if n is None or args.load == "per-ue" else TRAIN_UES * TRAIN_RATE / n
+        pops.append((n, rate))
+    jobs = [(m, None, c, s, args.episodes, det, n, r) for m in args.methods for c in args.conditions
+            for s in args.seeds for n, r in pops]
+    jobs += [(Path(x).name, x, c, s, args.episodes, det, n, r) for x in args.runs for c in args.conditions
+             for s in args.seeds for n, r in pops]
     rows = [None] * len(jobs)
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(run_job, job): k for k, job in enumerate(jobs)}
@@ -160,11 +183,13 @@ def main() -> None:
 
     keys = ("common_reward", "outage", "deficit", "signaling", "ho_per_epoch", "pingpong_ratio",
             "prep_rejection", "window_outage")
-    print(f"{'condition':9s} {'method':24s} " + " ".join(f"{k[:12]:>12s}" for k in keys))
+    print(f"{'condition':9s} {'UEs':>4s} {'method':28s} " + " ".join(f"{k[:12]:>12s}" for k in keys))
     for condition in args.conditions:
-        for name in dict.fromkeys(r["method"] for r in rows):
-            sel = [r for r in rows if r["method"] == name and r["condition"] == condition]
-            print(f"{condition:9s} {name:24s} " + " ".join(f"{np.mean([r[k] for r in sel]):12.4f}" for k in keys))
+        for n in dict.fromkeys(r["num_ues"] for r in rows):
+            for name in dict.fromkeys(r["method"] for r in rows):
+                sel = [r for r in rows if r["method"] == name and r["condition"] == condition and r["num_ues"] == n]
+                if sel:
+                    print(f"{condition:9s} {n:4d} {name:28s} " + " ".join(f"{np.mean([r[k] for r in sel]):12.4f}" for k in keys))
     print(f"rows -> {out}")
 
 
