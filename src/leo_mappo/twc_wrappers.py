@@ -57,6 +57,9 @@ class ComponentEnvWrapper:
     # Everything not overridden (ues, candidates, action_masks, num_agents, ...)
     # is served by the wrapped environment.
     def __getattr__(self, name):
+        # Guard so that unpickling (before `env` exists) does not recurse.
+        if name == "env" or name.startswith("__"):
+            raise AttributeError(name)
         return getattr(self.env, name)
 
     # ------------------------------------------------------------- helpers

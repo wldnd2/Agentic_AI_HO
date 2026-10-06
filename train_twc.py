@@ -16,6 +16,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
+import pickle
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -78,6 +80,9 @@ def main() -> None:
     parser.add_argument("--fixed-lambda-out", type=float, default=None, help="fixed-penalty baseline")
     parser.add_argument("--fixed-lambda-sig", type=float, default=None, help="fixed-penalty baseline")
     parser.add_argument("--checkpoint-every", type=int, default=100)
+    parser.add_argument("--state-every", type=int, default=20,
+                        help="save the complete training state every N iterations (resumable)")
+    parser.add_argument("--fresh", action="store_true", help="ignore an existing resume state and start over")
     parser.add_argument("--outdir", default=None)
     parser.add_argument("--smoke", action="store_true", help="short episodes and a small rollout")
     args = parser.parse_args()
@@ -99,31 +104,72 @@ def main() -> None:
     agent_cfg["hysteretic_beta"] = args.hysteretic_beta
     if args.smoke:
         agent_cfg.update(warmup_transitions=200, batch_size=64, updates_per_iteration=2)
-    env = build_env(args.seed, args.smoke)
-    if is_mappo:
-        mappo_cfg = dict(env.config["mappo"])
-        wrapper = ComponentEnvWrapper(env, components, tc, gamma=float(mappo_cfg.get("gamma", 0.99)))
-        agent = MAPPO(wrapper.obs_dim, env.global_state_dim, env.action_dim, mappo_cfg, args.seed,
-                      num_satellites=env.num_cells, candidate_count=env.candidate_count,
-                      eta_handover=float(env.reward_cfg["eta_handover"]))
-        runner = RolloutRunner(wrapper, agent)
-        agent_cfg = mappo_cfg
-    else:
-        trainer = EGCTrainer(env, components, agent_cfg, args.seed, tc)
-
     out = Path(args.outdir) if args.outdir else ROOT / "outputs" / "twc" / f"{args.variant}_seed{args.seed}"
     (out / "checkpoints").mkdir(parents=True, exist_ok=True)
+    state_path = out / "resume_state.pkl"
+    signature = {"variant": args.variant, "seed": args.seed, "iterations": args.iterations,
+                 "trainer": asdict(tc), "agent": agent_cfg, "smoke": args.smoke}
+
+    start_it = 0
+    if state_path.exists() and not args.fresh:
+        with state_path.open("rb") as handle:
+            state = pickle.load(handle)
+        if state["signature"] != signature:
+            raise SystemExit(f"{state_path} was written with different settings; use --fresh to start over")
+        start_it = int(state["next_iteration"])
+        objs = state["objects"]
+        print(f"[{args.variant} s{args.seed}] resumed at iteration {start_it}", flush=True)
+    else:
+        env = build_env(args.seed, args.smoke)
+        if is_mappo:
+            mappo_cfg = dict(env.config["mappo"])
+            wrapper = ComponentEnvWrapper(env, components, tc, gamma=float(mappo_cfg.get("gamma", 0.99)))
+            agent = MAPPO(wrapper.obs_dim, env.global_state_dim, env.action_dim, mappo_cfg, args.seed,
+                          num_satellites=env.num_cells, candidate_count=env.candidate_count,
+                          eta_handover=float(env.reward_cfg["eta_handover"]))
+            objs = {"agent": agent, "runner": RolloutRunner(wrapper, agent), "wrapper": wrapper}
+        else:
+            objs = {"trainer": EGCTrainer(env, components, agent_cfg, args.seed, tc)}
+    if is_mappo:
+        agent, runner, wrapper = objs["agent"], objs["runner"], objs["wrapper"]
+        run_agent_cfg = dict(agent.config) if hasattr(agent, "config") else agent_cfg
+    else:
+        trainer = objs["trainer"]
+        run_agent_cfg = agent_cfg
+
     (out / "run_config.json").write_text(json.dumps({
         "variant": args.variant, "learner": "mappo" if is_mappo else "egcmadqn",
         "components": asdict(components), "seed": args.seed,
-        "iterations": args.iterations, "trainer": asdict(tc), "agent": agent_cfg,
+        "iterations": args.iterations, "trainer": asdict(tc), "agent": run_agent_cfg,
         "config_stack": [p.name for p in TWC_STACK if p.exists()],
     }, indent=2))
 
+    # Keep the metrics written before the saved state; later rows are re-generated.
+    csv_path = out / "training_metrics.csv"
+    previous: list[dict] = []
     fields = None
+    if start_it > 0 and csv_path.exists():
+        with csv_path.open(newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            fields = reader.fieldnames
+            previous = [row for row in reader if int(row["iteration"]) < start_it]
+
+    def save_state(next_iteration: int) -> None:
+        tmp = state_path.with_suffix(".tmp")
+        with tmp.open("wb") as handle:
+            pickle.dump({"signature": signature, "next_iteration": next_iteration, "objects": objs},
+                        handle, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, state_path)  # atomic: an interruption never leaves a corrupt state
+
     t_start = time.time()
-    with (out / "training_metrics.csv").open("w", newline="", encoding="utf-8") as handle:
-        for it in range(args.iterations):
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = None
+        if fields is not None:
+            writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(previous)
+            handle.flush()
+        for it in range(start_it, args.iterations):
             t0 = time.time()
             if is_mappo:
                 agent.set_training_iteration(it, args.iterations)
@@ -135,7 +181,7 @@ def main() -> None:
             else:
                 metrics = {"iteration": it, **trainer.run_iteration(it, args.iterations)}
             metrics["seconds"] = time.time() - t0
-            if fields is None:
+            if writer is None:
                 fields = list(metrics) + [k for k in ("lambda_out", "lambda_sig") if k not in metrics]
                 writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
                 writer.writeheader()
@@ -146,6 +192,8 @@ def main() -> None:
                     agent.save(out / "checkpoints" / f"mappo_weights_iter_{it + 1:04d}.npz")
                 else:
                     trainer.agent.save(out / "checkpoints" / f"egcmadqn_weights_iter_{it + 1:04d}.npz")
+            if (it + 1) % args.state_every == 0 and it + 1 < args.iterations:
+                save_state(it + 1)
             if it % 50 == 0 or it == args.iterations - 1:
                 print(f"[{args.variant} s{args.seed}] it {it:4d} common {metrics['common_reward']:.4f} "
                       f"outage {metrics['outage']:.3f} signal {metrics['signaling']:.3f} "
@@ -161,6 +209,8 @@ def main() -> None:
         duals = {"lambda_out": trainer.dual_out.value, "lambda_sig": trainer.dual_sig.value,
                  "fingerprint": trainer.agent.fingerprint.tolist()}
     (out / "duals.json").write_text(json.dumps(duals, indent=2))
+    if state_path.exists():
+        state_path.unlink()  # finished: the resume state is no longer needed
     print(f"done in {(time.time() - t_start) / 3600:.2f} h -> {out}")
 
 

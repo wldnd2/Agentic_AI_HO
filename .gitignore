@@ -36,3 +36,5 @@ outputs/**/checkpoints/
 *.fls
 *.log
 *.synctex.gz
+resume_state.*
+resume_state.*

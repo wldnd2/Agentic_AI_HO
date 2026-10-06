@@ -250,14 +250,18 @@ class EGCTrainer:
                                      self.tc.dual_max, initial=self.tc.fixed_lambda_sig or 0.0)
         self.relabel = self.tc.relabel_rewards
         if self.relabel:
-            constrained = self.c.dual_constraints
-            self.agent.use_relabeling(lambda: (
-                self.dual_out.value if constrained else 0.0, self.dual_sig.value if constrained else 0.0,
-                self.tc.outage_target, self.tc.signaling_target))
+            # A bound method (not a lambda) so that the trainer can be pickled for resuming.
+            self.agent.use_relabeling(self.lagrange_weights)
         self.obs, _, self.masks = env.reset()
         if self.coordinator is not None:
             self.coordinator.reset()
         self.costs = self._planner_costs()
+
+    def lagrange_weights(self) -> tuple[float, float, float, float]:
+        """(lambda_out, lambda_sig, out_thr, sig_thr) used when replayed rewards are relabelled."""
+        constrained = self.c.dual_constraints
+        return (self.dual_out.value if constrained else 0.0, self.dual_sig.value if constrained else 0.0,
+                self.tc.outage_target, self.tc.signaling_target)
 
     # ------------------------------------------------------------------ inputs
     def _prices(self) -> np.ndarray:

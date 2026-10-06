@@ -12,11 +12,16 @@ log() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 mkdir -p logs
 log "git pull"; git pull
 
+# Re-running this script after an interruption is safe: finished runs are
+# skipped and unfinished runs resume from their last saved state (every 20 it).
 RUNS=()
 start() { # variant seed outdir [extra args]
   local v=$1 s=$2 out=$3; shift 3
-  python train_twc.py --variant "$v" --seed "$s" --outdir "$out" "$@" > "logs/$(basename "$out").log" 2>&1 &
   RUNS+=("$out")
+  if [ -f "$out/egcmadqn_weights.npz" ] || [ -f "$out/mappo_weights.npz" ]; then
+    log "skip (finished): $out"; return
+  fi
+  python train_twc.py --variant "$v" --seed "$s" --outdir "$out" "$@" >> "logs/$(basename "$out").log" 2>&1 &
 }
 for s in 7 8 9;    do start c3_c4    $s outputs/twc/c3_c4_sig0.05_seed$s --signaling-target 0.05; done
 for s in 10 11;    do start proposed $s outputs/twc/proposed_v2_sig0.05_seed$s --kappa 0.5 --signaling-target 0.05; done
