@@ -38,3 +38,4 @@ outputs/**/checkpoints/
 *.synctex.gz
 resume_state.*
 resume_state.*
+*.partial.jsonl

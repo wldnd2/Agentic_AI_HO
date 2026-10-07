@@ -170,15 +170,42 @@ def main() -> None:
             for s in args.seeds for n, r in pops]
     jobs += [(Path(x).name, x, c, s, args.episodes, det, n, r) for x in args.runs for c in args.conditions
              for s in args.seeds for n, r in pops]
-    rows = [None] * len(jobs)
-    with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(run_job, job): k for k, job in enumerate(jobs)}
-        for done, future in enumerate(as_completed(futures), start=1):
-            rows[futures[future]] = future.result()
-            job = jobs[futures[future]]
-            print(f"  [{done}/{len(jobs)}] {job[0]} {job[2]} seed {job[3]}", flush=True)
+    # Resumable: every finished job is appended to <tag>.partial.jsonl at once, and
+    # a re-run with the same arguments skips the jobs that are already there.
     out = ROOT / "outputs" / "twc" / "eval" / f"{args.tag}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
+    partial = out.with_suffix(".partial.jsonl")
+
+    def key(job) -> tuple:
+        method, run_dir, condition, seed, episodes, deterministic, n, rate = job
+        return (method, None if run_dir is None else str(Path(run_dir)), condition, int(seed), int(episodes),
+                bool(deterministic), n, None if rate is None else round(float(rate), 6))
+
+    done: dict[tuple, dict] = {}
+    if partial.exists():
+        for line in partial.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # a line cut by the interruption
+            done[tuple(record["_job"])] = record
+    keys = [key(job) for job in jobs]
+    todo = [k for k, job_key in enumerate(keys) if job_key not in done]
+    if done:
+        print(f"resuming: {len(jobs) - len(todo)} of {len(jobs)} jobs already finished", flush=True)
+    with ProcessPoolExecutor(max_workers=args.workers) as pool, partial.open("a", encoding="utf-8") as handle:
+        futures = {pool.submit(run_job, jobs[k]): k for k in todo}
+        for count, future in enumerate(as_completed(futures), start=1):
+            k = futures[future]
+            record = dict(future.result())
+            record["_job"] = list(keys[k])
+            handle.write(json.dumps(record) + "\n")
+            handle.flush()
+            done[keys[k]] = record
+            job = jobs[k]
+            print(f"  [{len(jobs) - len(todo) + count}/{len(jobs)}] {job[0]} {job[2]} seed {job[3]}"
+                  + (f" UEs {job[6]}" if job[6] else ""), flush=True)
+    rows = [{k: v for k, v in done[job_key].items() if k != "_job"} for job_key in keys]
     out.write_text("".join(json.dumps(r) + "\n" for r in rows))
 
     keys = ("common_reward", "outage", "deficit", "signaling", "ho_per_epoch", "pingpong_ratio",
