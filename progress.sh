@@ -15,13 +15,13 @@ for path in sorted(glob.glob("outputs/twc/*seed*/training_metrics.csv")):
     age_min = (time.time() - os.path.getmtime(path)) / 60
     if n >= 2000:
         done_count += 1
-        if show_all: print(f"{name:34s} {n:4d}/2000  완료")
+        if show_all: print(f"{name:34s} {n:4d}/2000  done")
         continue
     if age_min > max(5, 3 * sec / 60):
         stopped += 1
-        print(f"{name:34s} {n:4d}/2000  멈춤 (마지막 기록 {age_min:.0f}분 전)")
+        print(f"{name:34s} {n:4d}/2000  STOPPED (last write {age_min:.0f} min ago)")
     else:
         running += 1
-        print(f"{name:34s} {n:4d}/2000  ({sec:4.1f} s/회)  남은 시간 약 {(2000 - n) * sec / 3600:.1f} h")
-print(f"\n실행 중 {running}개, 멈춤 {stopped}개, 완료 {done_count}개")
+        print(f"{name:34s} {n:4d}/2000  ({sec:4.1f} s/it)  ~{(2000 - n) * sec / 3600:.1f} h left")
+print(f"\nrunning {running}, stopped {stopped}, done {done_count}")
 PY

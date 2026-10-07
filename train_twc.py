@@ -53,9 +53,13 @@ AGENT_CFG = {
 }
 
 
-def build_env(seed: int, smoke: bool) -> LEOMobilityEnv:
+def build_env(seed: int, smoke: bool, ues: int | None = None, rate: float | None = None) -> LEOMobilityEnv:
     cfg = load_config(CFG / "default.yaml", [p for p in TWC_STACK if p.exists()])
     cfg["environment_seed"] = seed
+    if ues is not None:
+        cfg["environment"]["num_ues"] = int(ues)
+    if rate is not None:
+        cfg["traffic"]["mean_arrival_mbps"] = float(rate)
     if smoke:
         cfg["environment"]["episode_steps"] = 40
     return LEOMobilityEnv(cfg)
@@ -83,6 +87,8 @@ def main() -> None:
     parser.add_argument("--state-every", type=int, default=20,
                         help="save the complete training state every N iterations (resumable)")
     parser.add_argument("--fresh", action="store_true", help="ignore an existing resume state and start over")
+    parser.add_argument("--ues", type=int, default=None, help="training UE population (default 24)")
+    parser.add_argument("--rate", type=float, default=None, help="per-UE traffic in Mb/s (default 1.2)")
     parser.add_argument("--outdir", default=None)
     parser.add_argument("--smoke", action="store_true", help="short episodes and a small rollout")
     args = parser.parse_args()
@@ -108,7 +114,8 @@ def main() -> None:
     (out / "checkpoints").mkdir(parents=True, exist_ok=True)
     state_path = out / "resume_state.pkl"
     signature = {"variant": args.variant, "seed": args.seed, "iterations": args.iterations,
-                 "trainer": asdict(tc), "agent": agent_cfg, "smoke": args.smoke}
+                 "trainer": asdict(tc), "agent": agent_cfg, "smoke": args.smoke,
+                 "ues": args.ues, "rate": args.rate}
 
     start_it = 0
     if state_path.exists() and not args.fresh:
@@ -120,7 +127,7 @@ def main() -> None:
         objs = state["objects"]
         print(f"[{args.variant} s{args.seed}] resumed at iteration {start_it}", flush=True)
     else:
-        env = build_env(args.seed, args.smoke)
+        env = build_env(args.seed, args.smoke, args.ues, args.rate)
         if is_mappo:
             mappo_cfg = dict(env.config["mappo"])
             wrapper = ComponentEnvWrapper(env, components, tc, gamma=float(mappo_cfg.get("gamma", 0.99)))
@@ -133,15 +140,19 @@ def main() -> None:
     if is_mappo:
         agent, runner, wrapper = objs["agent"], objs["runner"], objs["wrapper"]
         run_agent_cfg = dict(agent.config) if hasattr(agent, "config") else agent_cfg
+        env_used = wrapper.env
     else:
         trainer = objs["trainer"]
         run_agent_cfg = agent_cfg
+        env_used = trainer.env
 
     (out / "run_config.json").write_text(json.dumps({
         "variant": args.variant, "learner": "mappo" if is_mappo else "egcmadqn",
         "components": asdict(components), "seed": args.seed,
         "iterations": args.iterations, "trainer": asdict(tc), "agent": run_agent_cfg,
         "config_stack": [p.name for p in TWC_STACK if p.exists()],
+        "population": {"num_ues": env_used.num_agents,
+                       "rate_mbps": float(env_used.config["traffic"]["mean_arrival_mbps"])},
     }, indent=2))
 
     # Keep the metrics written before the saved state; later rows are re-generated.

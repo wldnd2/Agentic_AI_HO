@@ -73,7 +73,8 @@ class MAPPOExecutor:
         self.coordinator = self.wrapper.coordinator
         # The critic input depends on the training population; only the actor is used here,
         # so the networks are built with the training dimensions and run on any population.
-        ref = env if env.num_agents == TRAIN_UES else build_env("nominal", seed, TRAIN_UES, TRAIN_RATE)
+        pop = run_config.get("population", {"num_ues": TRAIN_UES, "rate_mbps": TRAIN_RATE})
+        ref = env if env.num_agents == pop["num_ues"] else build_env("nominal", seed, pop["num_ues"], pop["rate_mbps"])
         ref_wrapper = ComponentEnvWrapper(ref, self.wrapper.c)
         self.agent = MAPPO(ref_wrapper.obs_dim, ref.global_state_dim, ref.action_dim, ref.config["mappo"], seed,
                            num_satellites=ref.num_cells, candidate_count=ref.candidate_count,
