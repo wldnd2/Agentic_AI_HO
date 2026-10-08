@@ -81,6 +81,8 @@ def main() -> None:
                         help="v1 behaviour: update multipliers from all (incl. exploring) agents")
     parser.add_argument("--hysteretic-beta", type=float, default=1.0,
                         help="hysteretic Q-learning step for negative TD errors (Liu et al., TWC 2024); 1 = off")
+    parser.add_argument("--dual-lr-out", type=float, default=TrainerConfig.dual_learning_rate_out)
+    parser.add_argument("--dual-lr-sig", type=float, default=TrainerConfig.dual_learning_rate_sig)
     parser.add_argument("--fixed-lambda-out", type=float, default=None, help="fixed-penalty baseline")
     parser.add_argument("--fixed-lambda-sig", type=float, default=None, help="fixed-penalty baseline")
     parser.add_argument("--checkpoint-every", type=int, default=100)
@@ -103,6 +105,8 @@ def main() -> None:
         signaling_target=args.signaling_target,
         relabel_rewards=not args.no_relabel,
         greedy_constraint_estimates=not args.behavior_constraints,
+        dual_learning_rate_out=args.dual_lr_out,
+        dual_learning_rate_sig=args.dual_lr_sig,
         fixed_lambda_out=args.fixed_lambda_out,
         fixed_lambda_sig=args.fixed_lambda_sig,
     )
