@@ -1,0 +1,62 @@
+{
+  "variant": "proposed",
+  "learner": "egcmadqn",
+  "components": {
+    "guided_exploration": true,
+    "potential_shaping": true,
+    "dual_constraints": true,
+    "price_input": true
+  },
+  "seed": 8,
+  "iterations": 2000,
+  "trainer": {
+    "rollout_steps": 128,
+    "guidance_temperature": 0.5,
+    "guidance_decay_fraction": 0.4,
+    "shaping_scale": 0.5,
+    "outage_target": 1.0,
+    "signaling_target": 0.05,
+    "relabel_rewards": true,
+    "fixed_lambda_out": null,
+    "fixed_lambda_sig": null,
+    "greedy_constraint_estimates": true,
+    "dual_learning_rate_out": 0.005,
+    "dual_learning_rate_sig": 0.02,
+    "dual_max": 10.0,
+    "extra": {}
+  },
+  "agent": {
+    "hidden_dims": [
+      128,
+      128
+    ],
+    "gamma": 0.99,
+    "learning_rate": 0.001,
+    "final_learning_rate": 0.0001,
+    "batch_size": 256,
+    "updates_per_iteration": 32,
+    "target_update_interval": 250,
+    "warmup_transitions": 10000,
+    "epsilon_start": 1.0,
+    "epsilon_end": 0.05,
+    "epsilon_decay_fraction": 0.4,
+    "max_grad_norm": 10.0,
+    "huber_delta": 1.0,
+    "buffer_capacity": 200000,
+    "hysteretic_beta": 1.0
+  },
+  "config_stack": [
+    "validation_agentic_challenge_v3.yaml",
+    "eta_handover_005.yaml",
+    "validation_dwell_15.yaml",
+    "lr_anneal_linear.yaml",
+    "twc_walker_p3.yaml",
+    "twc_3gpp_set1.yaml",
+    "twc_load_24ue.yaml",
+    "twc_events.yaml"
+  ],
+  "population": {
+    "num_ues": 48,
+    "rate_mbps": 0.6
+  }
+}
