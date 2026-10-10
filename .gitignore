@@ -39,3 +39,4 @@ outputs/**/checkpoints/
 resume_state.*
 resume_state.*
 *.partial.jsonl
+.evalprog_*.json
