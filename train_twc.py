@@ -53,8 +53,17 @@ AGENT_CFG = {
 }
 
 
-def build_env(seed: int, smoke: bool, ues: int | None = None, rate: float | None = None) -> LEOMobilityEnv:
-    cfg = load_config(CFG / "default.yaml", [p for p in TWC_STACK if p.exists()])
+SCENARIOS = {
+    "default": [],
+    "mixed": [CFG / "twc_mixed_criticality.yaml"],
+    # Same scenario with PDCP duplication removed from the action set (ablation).
+    "mixed_nodup": [CFG / "twc_mixed_criticality.yaml", CFG / "twc_no_duplication.yaml"],
+}
+
+
+def build_env(seed: int, smoke: bool, ues: int | None = None, rate: float | None = None,
+              scenario: str = "default") -> LEOMobilityEnv:
+    cfg = load_config(CFG / "default.yaml", [p for p in TWC_STACK if p.exists()] + SCENARIOS[scenario])
     cfg["environment_seed"] = seed
     if ues is not None:
         cfg["environment"]["num_ues"] = int(ues)
@@ -91,6 +100,10 @@ def main() -> None:
     parser.add_argument("--fresh", action="store_true", help="ignore an existing resume state and start over")
     parser.add_argument("--ues", type=int, default=None, help="training UE population (default 24)")
     parser.add_argument("--rate", type=float, default=None, help="per-UE traffic in Mb/s (default 1.2)")
+    parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="default",
+                        help="mixed = mixed-criticality traffic (configs/twc_mixed_criticality.yaml)")
+    parser.add_argument("--outage-metric", default="outage_ratio",
+                        help="info key constrained by the outage dual (e.g. critical_outage_ratio)")
     parser.add_argument("--outdir", default=None)
     parser.add_argument("--smoke", action="store_true", help="short episodes and a small rollout")
     args = parser.parse_args()
@@ -103,6 +116,7 @@ def main() -> None:
         guidance_temperature=args.temperature,
         outage_target=args.outage_target,
         signaling_target=args.signaling_target,
+        outage_metric=args.outage_metric,
         relabel_rewards=not args.no_relabel,
         greedy_constraint_estimates=not args.behavior_constraints,
         dual_learning_rate_out=args.dual_lr_out,
@@ -119,7 +133,7 @@ def main() -> None:
     state_path = out / "resume_state.pkl"
     signature = {"variant": args.variant, "seed": args.seed, "iterations": args.iterations,
                  "trainer": asdict(tc), "agent": agent_cfg, "smoke": args.smoke,
-                 "ues": args.ues, "rate": args.rate}
+                 "ues": args.ues, "rate": args.rate, "scenario": args.scenario}
 
     start_it = 0
     if state_path.exists() and not args.fresh:
@@ -131,7 +145,7 @@ def main() -> None:
         objs = state["objects"]
         print(f"[{args.variant} s{args.seed}] resumed at iteration {start_it}", flush=True)
     else:
-        env = build_env(args.seed, args.smoke, args.ues, args.rate)
+        env = build_env(args.seed, args.smoke, args.ues, args.rate, args.scenario)
         if is_mappo:
             mappo_cfg = dict(env.config["mappo"])
             wrapper = ComponentEnvWrapper(env, components, tc, gamma=float(mappo_cfg.get("gamma", 0.99)))
@@ -155,6 +169,7 @@ def main() -> None:
         "components": asdict(components), "seed": args.seed,
         "iterations": args.iterations, "trainer": asdict(tc), "agent": run_agent_cfg,
         "config_stack": [p.name for p in TWC_STACK if p.exists()],
+        "scenario": args.scenario,
         "population": {"num_ues": env_used.num_agents,
                        "rate_mbps": float(env_used.config["traffic"]["mean_arrival_mbps"])},
     }, indent=2))

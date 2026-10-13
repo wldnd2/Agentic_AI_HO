@@ -1,0 +1,3 @@
+# Ablation: PDCP duplication is removed from the action set (DupOn always masked).
+duplication:
+  enabled: false

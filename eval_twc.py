@@ -22,13 +22,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
-from cho_baselines import A3ConditionalHandover, LocationBasedCHO, TimeBasedCHO  # noqa: E402
+from cho_baselines import A3ConditionalHandover, CriticalDuplicationA3, LocationBasedCHO, TimeBasedCHO  # noqa: E402
 from leo_mappo import LEOMobilityEnv, MAPPO, load_config  # noqa: E402
 from leo_mappo.egcmadqn import Components  # noqa: E402
 from leo_mappo.twc_wrappers import ComponentEnvWrapper  # noqa: E402
 from leo_mappo.baselines import max_sinr_policy  # noqa: E402
 from leo_mappo.egcmadqn import EGCExecutor, EGCMADQN  # noqa: E402
-from train_twc import CFG, TWC_STACK  # noqa: E402
+from train_twc import CFG, SCENARIOS, TWC_STACK  # noqa: E402
 
 # Rule baselines tuned on validation seeds 20-22 (outputs/twc/cho_sweep_*.csv).
 RULES = {
@@ -36,6 +36,9 @@ RULES = {
     "t1": lambda: TimeBasedCHO(service_elevation_deg=75.0, lead_s=15.0, target_rule="geometry"),
     "d2": lambda: LocationBasedCHO(thresh1_km=400.0, thresh2_km=1500.0, target_rule="load"),
     "maxsinr": lambda: max_sinr_policy,
+    # PDCP-duplication rules (mixed-criticality scenario).
+    "a3critdup": lambda: CriticalDuplicationA3(prep_offset_db=1.0, exec_offset_db=1.0, ttt_steps=1),
+    "a3dup": lambda: A3ConditionalHandover(prep_offset_db=1.0, exec_offset_db=1.0, ttt_steps=1, dup_threshold_db=100.0),
 }
 # Compound-stress disturbances are active in epochs [60, 130) (twc_compound_eval.yaml).
 STRESS_WINDOW = (60, 130)
@@ -45,13 +48,20 @@ SUM_KEYS = (
     "handover_failure", "handover_success", "pingpong", "deadline_misses", "arrivals",
     "duplication_active_time_fraction", "preparation_requested", "preparation_rejected",
 )
+# Per-class metrics (only present in the mixed-criticality scenario).
+CLASS_KEYS = (
+    "critical_outage_ratio", "noncritical_outage_ratio", "critical_duplication_fraction",
+    "noncritical_duplication_fraction", "critical_deficit", "noncritical_deficit",
+    "critical_deadline_misses", "critical_arrivals", "noncritical_deadline_misses", "noncritical_arrivals",
+)
 
 
 TRAIN_UES, TRAIN_RATE = 24, 1.2
 
 
-def build_env(condition: str, seed: int, ues: int | None = None, rate: float | None = None) -> LEOMobilityEnv:
-    stack = [p for p in TWC_STACK if p.exists()]
+def build_env(condition: str, seed: int, ues: int | None = None, rate: float | None = None,
+              scenario: str = "default") -> LEOMobilityEnv:
+    stack = [p for p in TWC_STACK if p.exists()] + SCENARIOS[scenario]
     if condition == "stress":
         stack.append(CFG / "twc_compound_eval.yaml")
     cfg = load_config(CFG / "default.yaml", stack)
@@ -74,7 +84,8 @@ class MAPPOExecutor:
         # The critic input depends on the training population; only the actor is used here,
         # so the networks are built with the training dimensions and run on any population.
         pop = run_config.get("population", {"num_ues": TRAIN_UES, "rate_mbps": TRAIN_RATE})
-        ref = env if env.num_agents == pop["num_ues"] else build_env("nominal", seed, pop["num_ues"], pop["rate_mbps"])
+        ref = env if env.num_agents == pop["num_ues"] else build_env(
+            "nominal", seed, pop["num_ues"], pop["rate_mbps"], run_config.get("scenario", "default"))
         ref_wrapper = ComponentEnvWrapper(ref, self.wrapper.c)
         self.agent = MAPPO(ref_wrapper.obs_dim, ref.global_state_dim, ref.action_dim, ref.config["mappo"], seed,
                            num_satellites=ref.num_cells, candidate_count=ref.candidate_count,
@@ -93,7 +104,8 @@ class MAPPOExecutor:
 def run_job(job: tuple) -> dict:
     method, run_dir, condition, seed, episodes, mappo_deterministic = job[:6]
     ues, rate = (job[6], job[7]) if len(job) > 6 else (None, None)
-    env = build_env(condition, seed, ues, rate)
+    scenario = job[8] if len(job) > 8 else "default"
+    env = build_env(condition, seed, ues, rate, scenario)
     steps = int(env.env_cfg["episode_steps"])
     executor = None
     if run_dir is not None:
@@ -106,6 +118,7 @@ def run_job(job: tuple) -> dict:
     else:
         policy = RULES[method]()
     sums = {k: 0.0 for k in SUM_KEYS}
+    class_sums: dict[str, float] = {}
     window = {k: 0.0 for k in WINDOW_KEYS}
     window_steps = 0
     reward = 0.0
@@ -122,6 +135,9 @@ def run_job(job: tuple) -> dict:
             reward += float(np.mean(out.rewards))
             for k in SUM_KEYS:
                 sums[k] += float(out.info.get(k, 0.0))
+            for k in CLASS_KEYS:
+                if k in out.info:
+                    class_sums[k] = class_sums.get(k, 0.0) + float(out.info[k])
             if STRESS_WINDOW[0] <= env.step_index - 1 < STRESS_WINDOW[1]:
                 window_steps += 1
                 for k in WINDOW_KEYS:
@@ -142,6 +158,17 @@ def run_job(job: tuple) -> dict:
         "window_deficit": window["service_deficit"] / max(window_steps, 1),
         "window_signaling": window["signaling_cost"] / max(window_steps, 1),
         "window_ho_per_epoch": window["handover_started"] / max(window_steps, 1),
+        "scenario": scenario,
+        **({
+            "critical_outage": class_sums["critical_outage_ratio"] / n,
+            "noncritical_outage": class_sums["noncritical_outage_ratio"] / n,
+            "critical_dup": class_sums["critical_duplication_fraction"] / n,
+            "noncritical_dup": class_sums["noncritical_duplication_fraction"] / n,
+            "critical_deficit": class_sums["critical_deficit"] / n,
+            "critical_deadline_violation": class_sums["critical_deadline_misses"] / max(class_sums["critical_arrivals"], 1.0),
+            "noncritical_deadline_violation": (class_sums["noncritical_deadline_misses"]
+                                               / max(class_sums["noncritical_arrivals"], 1.0)),
+        } if class_sums else {}),
     }
 
 
@@ -156,6 +183,7 @@ def main() -> None:
     parser.add_argument("--tag", default="eval")
     parser.add_argument("--ues", nargs="+", type=int, default=[None],
                         help="UE populations to evaluate (default: the training population, 24)")
+    parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="default")
     parser.add_argument("--load", choices=["per-ue", "total"], default="per-ue",
                         help="per-ue: keep 1.2 Mb/s per UE; total: keep the training total load (24 x 1.2 Mb/s)")
     parser.add_argument("--mappo-deterministic", action="store_true",
@@ -167,9 +195,10 @@ def main() -> None:
     for n in args.ues:
         rate = None if n is None or args.load == "per-ue" else TRAIN_UES * TRAIN_RATE / n
         pops.append((n, rate))
-    jobs = [(m, None, c, s, args.episodes, det, n, r) for m in args.methods for c in args.conditions
+    sc = args.scenario
+    jobs = [(m, None, c, s, args.episodes, det, n, r, sc) for m in args.methods for c in args.conditions
             for s in args.seeds for n, r in pops]
-    jobs += [(Path(x).name, x, c, s, args.episodes, det, n, r) for x in args.runs for c in args.conditions
+    jobs += [(Path(x).name, x, c, s, args.episodes, det, n, r, sc) for x in args.runs for c in args.conditions
              for s in args.seeds for n, r in pops]
     # Resumable: every finished job is appended to <tag>.partial.jsonl at once, and
     # a re-run with the same arguments skips the jobs that are already there.
@@ -178,9 +207,9 @@ def main() -> None:
     partial = out.with_suffix(".partial.jsonl")
 
     def key(job) -> tuple:
-        method, run_dir, condition, seed, episodes, deterministic, n, rate = job
+        method, run_dir, condition, seed, episodes, deterministic, n, rate, scenario = job
         return (method, None if run_dir is None else str(Path(run_dir)), condition, int(seed), int(episodes),
-                bool(deterministic), n, None if rate is None else round(float(rate), 6))
+                bool(deterministic), n, None if rate is None else round(float(rate), 6), scenario)
 
     done: dict[tuple, dict] = {}
     if partial.exists():
@@ -211,6 +240,9 @@ def main() -> None:
 
     keys = ("common_reward", "outage", "deficit", "signaling", "ho_per_epoch", "pingpong_ratio",
             "prep_rejection", "window_outage")
+    if args.scenario == "mixed":
+        keys = ("common_reward", "signaling", "critical_outage", "noncritical_outage", "critical_dup",
+                "noncritical_dup", "critical_deadline_violation", "noncritical_deadline_violation")
     print(f"{'condition':9s} {'UEs':>4s} {'method':28s} " + " ".join(f"{k[:12]:>12s}" for k in keys))
     for condition in args.conditions:
         for n in dict.fromkeys(r["num_ues"] for r in rows):

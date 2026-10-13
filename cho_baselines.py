@@ -351,3 +351,19 @@ def _mask_invalid(env, actions: np.ndarray) -> np.ndarray:
         if masks[uid, int(actions[uid])] <= 0.0:
             actions[uid] = 0
     return actions
+
+
+class CriticalDuplicationA3(A3ConditionalHandover):
+    """A3 CHO that activates PDCP duplication for critical UEs as soon as a CHO
+    target is prepared (common practice for URLLC-type traffic); non-critical UEs
+    follow plain A3 CHO."""
+
+    def __call__(self, env) -> np.ndarray:
+        actions = super().__call__(env)
+        masks = env.action_masks()
+        for ue in env.ues:
+            uid = ue.ue_id
+            if (getattr(ue, "critical", False) and ue.state == MobilityState.PREPARED
+                    and actions[uid] == 0 and masks[uid, env.dup_on_action] > 0.0):
+                actions[uid] = env.dup_on_action
+        return actions

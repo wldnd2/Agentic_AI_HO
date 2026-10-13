@@ -45,6 +45,11 @@ class UE:
     delivered_packets: int = 0
     missed_packets: int = 0
     overflow_packets: int = 0
+    # Traffic class (mixed-criticality scenario); the defaults reproduce the
+    # single-class model.
+    traffic_class: str = "default"
+    critical: bool = False
+    reward_weight: float = 1.0
 
     @property
     def position(self) -> np.ndarray:

@@ -1,0 +1,18 @@
+# Mixed-criticality scenario: 25% critical (URLLC-type) UEs with low rate,
+# 1 s deadline, high reliability target, scheduler priority 2 and weight 5 in the
+# class-weighted service deficit; 75% eMBB-type UEs. Class rates are multiples
+# of traffic.mean_arrival_mbps, so with 48 UEs x 0.6 Mb/s the total offered load
+# stays 28.8 Mb/s (12 x 0.2 + 36 x 0.733).
+traffic_classes:
+  - name: critical
+    fraction: 0.25
+    critical: true
+    rate_scale: 0.3333
+    deadline_ms: 1000.0
+    reliability_target: 0.999
+    qos_priority: 2.0
+    reward_weight: 5.0
+  - name: embb
+    fraction: 0.75
+    critical: false
+    rate_scale: 1.2222

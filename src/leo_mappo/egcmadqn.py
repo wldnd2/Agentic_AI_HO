@@ -217,6 +217,7 @@ class TrainerConfig:
     fixed_lambda_out: float | None = None    # fixed-penalty baseline: constant multipliers, no dual ascent
     fixed_lambda_sig: float | None = None
     greedy_constraint_estimates: bool = True # update multipliers from non-exploring agents only
+    outage_metric: str = "outage_ratio"      # or "critical_outage_ratio" (mixed-criticality scenario)
     dual_learning_rate_out: float = 0.005
     dual_learning_rate_sig: float = 0.005
     dual_max: float = 10.0
@@ -301,7 +302,10 @@ class EGCTrainer:
         gamma = self.agent.gamma
         sums = {"common_reward": 0.0, "training_reward": 0.0, "outage": 0.0, "signaling": 0.0,
                 "handover_started": 0.0, "pingpong": 0.0, "handover_success": 0.0, "shaping": 0.0}
-        greedy = {"outage": 0.0, "active": 0.0, "requests": 0.0}
+        greedy = {"outage": 0.0, "active": 0.0, "requests": 0.0, "out_active": 0.0}
+        critical_only = self.tc.outage_metric.startswith("critical")
+        out_mask = (np.asarray([getattr(u, "critical", False) for u in self.env.ues], dtype=bool)
+                    if critical_only else np.ones(self.env.num_agents, dtype=bool))
         prep_lo, prep_hi = self.env.prepare_start, self.env.prepare_start + self.env.candidate_count
         for _ in range(self.tc.rollout_steps):
             z = self.inputs(self.obs)
@@ -311,7 +315,7 @@ class EGCTrainer:
             if self.coordinator is not None:
                 self.coordinator.update(step.requested_pressure)
             base = float(np.mean(step.rewards))
-            outage = float(step.info["outage_ratio"])
+            outage = float(step.info[self.tc.outage_metric])
             signaling = float(step.info["signaling_cost"])
             reward = base
             if self.c.dual_constraints:
@@ -337,7 +341,8 @@ class EGCTrainer:
             greedy["active"] += float(chosen.sum())
             greedy["requests"] += float(np.sum(chosen & (actions >= prep_lo) & (actions < prep_hi)))
             if step.agent_outcomes is not None:
-                greedy["outage"] += float(step.agent_outcomes[chosen, 1].sum())
+                greedy["outage"] += float(step.agent_outcomes[chosen & out_mask, 1].sum())
+                greedy["out_active"] += float(np.count_nonzero(chosen & out_mask))
             sums["common_reward"] += base
             sums["training_reward"] += reward
             sums["outage"] += outage
@@ -356,11 +361,8 @@ class EGCTrainer:
         n = float(self.tc.rollout_steps)
         metrics = {k: v / n for k, v in sums.items() if k not in ("pingpong", "handover_success")}
         metrics["pingpong_ratio"] = sums["pingpong"] / max(sums["handover_success"], 1.0)
-        if greedy["active"] > 0.0:
-            metrics["greedy_outage"] = greedy["outage"] / greedy["active"]
-            metrics["greedy_signaling"] = greedy["requests"] / greedy["active"]
-        else:
-            metrics["greedy_outage"], metrics["greedy_signaling"] = metrics["outage"], metrics["signaling"]
+        metrics["greedy_outage"] = (greedy["outage"] / greedy["out_active"]) if greedy["out_active"] > 0.0 else metrics["outage"]
+        metrics["greedy_signaling"] = (greedy["requests"] / greedy["active"]) if greedy["active"] > 0.0 else metrics["signaling"]
         if self.c.dual_constraints:
             use_greedy = self.tc.greedy_constraint_estimates
             metrics["lambda_out"] = self.dual_out.update(metrics["greedy_outage"] if use_greedy else metrics["outage"])

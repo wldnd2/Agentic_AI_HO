@@ -78,7 +78,16 @@ class LEOMobilityEnv:
         self.num_cells = int(self.env_cfg["num_satellites"])
         self.candidate_count = int(self.env_cfg["candidate_count"])
         self.action_dim = self.candidate_count + 6
-        self.obs_dim = 16 + 7 * self.candidate_count
+        # Optional traffic classes (mixed-criticality scenario). Without them the
+        # environment is the single-class model used for all earlier results.
+        self.traffic_classes = [dict(c) for c in (config.get("traffic_classes") or [])]
+        if self.traffic_classes:
+            total = sum(float(c["fraction"]) for c in self.traffic_classes)
+            if abs(total - 1.0) > 1e-6:
+                raise ValueError("traffic_classes fractions must sum to 1")
+        self.obs_dim = 16 + 7 * self.candidate_count + (1 if self.traffic_classes else 0)
+        # Ablation switch: duplication.enabled = false removes DupOn from every mask.
+        self.duplication_enabled = bool(config.get("duplication", {}).get("enabled", True))
         self.global_state_dim = self.num_agents * self.obs_dim + 2 * self.num_cells
         self.environment_seed = int(config.get("environment_seed", config.get("seed", 0)))
         self.rng = np.random.default_rng(self.environment_seed)
@@ -320,8 +329,12 @@ class LEOMobilityEnv:
         spread = float(self.traffic_cfg.get("arrival_spread", 0.0))
         ues = []
         radius = self._service_radius_rad()
+        classes = self._class_assignment()
         for index in range(self.num_agents):
-            rate = base_rate * self.rng.uniform(1.0 - spread, 1.0 + spread)
+            cls = classes[index]
+            # Class rates are multiples of traffic.mean_arrival_mbps so that load
+            # scaling (e.g. constant total load across UE populations) still applies.
+            rate = base_rate * float(cls.get("rate_scale", 1.0)) * self.rng.uniform(1.0 - spread, 1.0 + spread)
             if radius is None:
                 lat = float(self.rng.uniform(-self.UE_LAT_HALF_RAD, self.UE_LAT_HALF_RAD))
                 lon = float(self.rng.uniform(-self.UE_LON_HALF_RAD, self.UE_LON_HALF_RAD))
@@ -337,13 +350,30 @@ class LEOMobilityEnv:
                     longitude_rad=lon,
                     mean_arrival_mbps=rate,
                     packet_size_bits=int(self.traffic_cfg["packet_size_bits"]),
-                    deadline_s=float(self.traffic_cfg["deadline_ms"]) / 1000.0,
-                    reliability_target=float(self.traffic_cfg["reliability_target"]),
-                    qos_priority=float(self.traffic_cfg["qos_priority"]),
+                    deadline_s=float(cls.get("deadline_ms", self.traffic_cfg["deadline_ms"])) / 1000.0,
+                    reliability_target=float(cls.get("reliability_target", self.traffic_cfg["reliability_target"])),
+                    qos_priority=float(cls.get("qos_priority", self.traffic_cfg["qos_priority"])),
                     max_queue_packets=int(self.env_cfg["max_queue_packets"]),
+                    traffic_class=str(cls.get("name", "default")),
+                    critical=bool(cls.get("critical", False)),
+                    reward_weight=float(cls.get("reward_weight", 1.0)),
                 )
             )
         return ues
+
+    def _class_assignment(self) -> list[dict]:
+        """Traffic class of each UE index (largest-remainder rounding of the
+        class fractions; positions are random, so index order is immaterial)."""
+        if not self.traffic_classes:
+            return [{} for _ in range(self.num_agents)]
+        quotas = [float(c["fraction"]) * self.num_agents for c in self.traffic_classes]
+        counts = [int(np.floor(q)) for q in quotas]
+        for k in np.argsort([q - n for q, n in zip(quotas, counts)])[::-1][: self.num_agents - sum(counts)]:
+            counts[int(k)] += 1
+        out: list[dict] = []
+        for cls, n in zip(self.traffic_classes, counts):
+            out.extend([cls] * n)
+        return out
 
     def reset(self, seed: int | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if seed is not None:
@@ -569,7 +599,8 @@ class LEOMobilityEnv:
             elif ue.state == MobilityState.PREPARED:
                 secondary = ue.secondary_cell
                 if secondary is not None and self.links[ue.ue_id][secondary].visible:
-                    mask[self.dup_on_action] = 1.0
+                    if self.duplication_enabled:
+                        mask[self.dup_on_action] = 1.0
                     if self._commit_feasible(ue):
                         mask[self.commit_action] = 1.0
                 mask[self.release_action] = 1.0
@@ -964,6 +995,12 @@ class LEOMobilityEnv:
         )
         deficits = np.clip(deficits, 0.0, 1.0)
         service_deficit = float(np.clip(deficits[active > 0.0].mean() if np.any(active > 0.0) else 0.0, 0.0, 1.0))
+        if self.traffic_classes:
+            # Class-weighted service deficit (critical UEs weigh more in the common reward).
+            weights = np.asarray([ue.reward_weight for ue in self.ues], dtype=np.float64)
+            on = active > 0.0
+            service_deficit = float(np.clip(
+                (weights[on] * deficits[on]).sum() / max(weights[on].sum(), epsilon) if np.any(on) else 0.0, 0.0, 1.0))
         realized_goodput = (
             delivered_by_ue
             * int(self.traffic_cfg["packet_size_bits"])
@@ -1033,7 +1070,21 @@ class LEOMobilityEnv:
                 congestion_outcome,
             ]
         )
+        class_metrics: dict[str, float] = {}
+        if self.traffic_classes:
+            crit = np.asarray([ue.critical for ue in self.ues], dtype=bool)
+            dup = np.asarray([ue.state == MobilityState.DUPLICATING for ue in self.ues], dtype=bool)
+            on = active > 0.0
+            for tag, mask in (("critical", crit), ("noncritical", ~crit)):
+                n_on = float(np.count_nonzero(on & mask))
+                class_metrics[f"{tag}_active_ue_count"] = n_on
+                class_metrics[f"{tag}_outage_ue_count"] = float(np.count_nonzero(outage & mask))
+                class_metrics[f"{tag}_outage_ratio"] = float(np.count_nonzero(outage & mask)) / (n_on + epsilon)
+                class_metrics[f"{tag}_deficit"] = float(deficits[on & mask].mean()) if n_on else 0.0
+                class_metrics[f"{tag}_duplication_fraction"] = (
+                    float(np.count_nonzero(dup & mask)) / max(int(mask.sum()), 1))
         return {
+            **class_metrics,
             "delivered_packets": float(delivered),
             "service_deficit": service_deficit,
             "duplication_train_cost": float(np.clip(duplication_train_cost, 0.0, 1.0)),
@@ -1106,11 +1157,14 @@ class LEOMobilityEnv:
         effects = self._active_effects
         arrivals = 0
         overflow_before = sum(ue.overflow_packets for ue in self.ues)
+        arrivals_by_ue = np.zeros(self.num_agents)
         for ue in self.ues:
-            arrivals += ue.generate_traffic(self.interval_s, effects.traffic_multiplier[ue.ue_id], self.rng)
+            arrivals_by_ue[ue.ue_id] = ue.generate_traffic(self.interval_s, effects.traffic_multiplier[ue.ue_id], self.rng)
+            arrivals += int(arrivals_by_ue[ue.ue_id])
         active, required_rates = self._compute_required_rates(effects.traffic_multiplier)
         tx_metrics = self._schedule_and_transmit(required_rates, active)
-        missed = sum(ue.age_and_drop_expired(self.interval_s) for ue in self.ues)
+        missed_by_ue = np.asarray([ue.age_and_drop_expired(self.interval_s) for ue in self.ues], dtype=np.float64)
+        missed = int(missed_by_ue.sum())
         overflow = sum(ue.overflow_packets for ue in self.ues) - overflow_before
         epsilon = float(self.reward_cfg.get("epsilon", 1e-8))
         active_count = tx_metrics["active_ue_count"]
@@ -1168,6 +1222,16 @@ class LEOMobilityEnv:
             **action_fractions,
             "arrivals": float(arrivals),
             "deadline_misses": float(missed),
+            **(
+                {
+                    "critical_arrivals": float(arrivals_by_ue[[u.critical for u in self.ues]].sum()),
+                    "critical_deadline_misses": float(missed_by_ue[[u.critical for u in self.ues]].sum()),
+                    "noncritical_arrivals": float(arrivals_by_ue[[not u.critical for u in self.ues]].sum()),
+                    "noncritical_deadline_misses": float(missed_by_ue[[not u.critical for u in self.ues]].sum()),
+                }
+                if self.traffic_classes
+                else {}
+            ),
             "overflow_packets": float(overflow),
             "throughput_deficit": float(throughput_deficit),
             "handover_train_cost": handover_train_cost,
@@ -1303,6 +1367,8 @@ class LEOMobilityEnv:
                         np.clip(self.satellites[cell_id].effective_capacity_scale, 0.0, 1.0),
                     ]
                 )
+        if self.traffic_classes:
+            values.append(float(ue.critical))
         result = np.asarray(values, dtype=np.float64)
         if result.shape != (self.obs_dim,):
             raise RuntimeError(f"observation shape mismatch: expected {self.obs_dim}, got {result.shape}")
