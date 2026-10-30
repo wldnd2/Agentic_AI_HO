@@ -66,7 +66,7 @@ def test_trainer_constrains_the_critical_outage():
 
 
 def test_duplication_can_be_disabled_for_the_ablation():
-    cfg = load_config(CFG / "default.yaml", [*TWC, CFG / "twc_mixed_criticality.yaml", CFG / "twc_no_duplication.yaml"])
+    cfg = load_config(CFG / "default.yaml", [*TWC, CFG / "twc_mixed_criticality.yaml", CFG / "legacy_pdcp/twc_no_duplication.yaml"])
     env = LEOMobilityEnv(cfg)
     env.reset(seed=4)
     for _ in range(60):

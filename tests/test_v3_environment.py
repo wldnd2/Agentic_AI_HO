@@ -656,7 +656,7 @@ class V3EnvironmentTest(unittest.TestCase):
             ROOT / "configs/default.yaml",
             [
                 ROOT / "configs/validation_agentic_challenge_v3.yaml",
-                ROOT / "configs/full_agentic.yaml",
+                ROOT / "configs/legacy_pdcp/full_agentic.yaml",
             ],
         )
         env = LEOMobilityEnv(config)

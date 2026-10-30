@@ -32,12 +32,12 @@ COMMON = [
 ]
 MODEL_OVERRIDES = {
     "M1": [],
-    "M2": [CFG / "memory_only.yaml"],
-    "M3": [CFG / "memory_reasoning.yaml"],
-    "M4": [CFG / "m4_coordination.yaml"],
-    "M5": [CFG / "full_agentic.yaml", CFG / "dual_mid_0005.yaml"],
+    "M2": [CFG / "legacy_pdcp/memory_only.yaml"],
+    "M3": [CFG / "legacy_pdcp/memory_reasoning.yaml"],
+    "M4": [CFG / "legacy_pdcp/m4_coordination.yaml"],
+    "M5": [CFG / "legacy_pdcp/full_agentic.yaml", CFG / "legacy_pdcp/dual_mid_0005.yaml"],
     # Ablation: plain MAPPO (M1) trained with the M5 reliability Lagrangian only.
-    "M1D": [CFG / "m1_dual.yaml", CFG / "dual_mid_0005.yaml"],
+    "M1D": [CFG / "legacy_pdcp/m1_dual.yaml", CFG / "legacy_pdcp/dual_mid_0005.yaml"],
 }
 # Heavier models first so the pool packs well.
 LAUNCH_ORDER = ["M5", "M4", "M3", "M2", "M1", "M1D"]

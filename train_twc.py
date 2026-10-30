@@ -57,7 +57,7 @@ SCENARIOS = {
     "default": [],
     "mixed": [CFG / "twc_mixed_criticality.yaml"],
     # Same scenario with PDCP duplication removed from the action set (ablation).
-    "mixed_nodup": [CFG / "twc_mixed_criticality.yaml", CFG / "twc_no_duplication.yaml"],
+    "mixed_nodup": [CFG / "twc_mixed_criticality.yaml", CFG / "legacy_pdcp/twc_no_duplication.yaml"],
 }
 
 

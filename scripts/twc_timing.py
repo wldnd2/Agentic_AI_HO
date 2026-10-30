@@ -73,7 +73,7 @@ def main() -> None:
     results = {
         "MADQN": time_madqn(args.iterations),
         "MAPPO (M1)": time_mappo(args.iterations, []),
-        "MAPPO + planner + price (M4)": time_mappo(args.iterations, [CFG / "m4_coordination.yaml"]),
+        "MAPPO + planner + price (M4)": time_mappo(args.iterations, [CFG / "legacy_pdcp/m4_coordination.yaml"]),
     }
     for name, sec in results.items():
         print(f"{name:30s} {sec:6.2f} s/iteration  ->  2000 iterations ~ {sec * 2000 / 3600:5.1f} h")
