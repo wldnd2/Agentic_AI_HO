@@ -38,15 +38,10 @@ v3:
     # Separate control-plane slots; data-plane reservation remains fractional.
     max_concurrent_per_satellite: 2
 
-  duplication:
-    # Path failures retain mild common-mode correlation but can diversify.
-    failure_correlation: 0.15
-
   coordination_demand:
     # M4 prices integrate system-wide intended data/control demand with one-step lag.
     serving_weight: 1.0
     preparation_weight: 1.0
-    duplication_weight: 1.0
 
 # Ranges are sampled once per episode from the environment RNG. Realizations are
 # hidden from actor observations and from the analytical geometry reasoner.

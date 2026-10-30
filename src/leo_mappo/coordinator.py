@@ -14,7 +14,7 @@ def compute_training_reward(
 ) -> tuple[float, float]:
     """Single source of truth for Core and reliability-constrained rewards.
 
-    C_ctrl = C_dup + eta_preparation*C_prep + eta_handover*C_HO
+    C_ctrl = eta_preparation*C_prep + eta_handover*C_HO
     M1-M4: -C_def - lambda_resource*C_ctrl
     M5:    -C_def - lambda_resource*C_ctrl - mu*(C_out-outage_target)
 

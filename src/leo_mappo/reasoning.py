@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .pdcp import joint_delivery_probability
 from .satellite import elevation_and_distance
 from .ue import MobilityState
 
@@ -120,19 +119,6 @@ def _predicted_goodputs(
     return float(service_goodput), float(reliability_goodput)
 
 
-def _duplicated_stream_rates(
-    primary_service_rate_bps: float,
-    primary_potential_rate_bps: float,
-    secondary_service_rate_bps: float,
-    secondary_potential_rate_bps: float,
-) -> tuple[float, float]:
-    """Represent one duplicated packet stream without summing its copies."""
-    return (
-        float(min(primary_service_rate_bps, secondary_service_rate_bps)),
-        float(min(primary_potential_rate_bps, secondary_potential_rate_bps)),
-    )
-
-
 @dataclass
 class ReasoningResult:
     features: np.ndarray
@@ -144,7 +130,6 @@ class ReasoningResult:
     predicted_outages: np.ndarray
     planning_reliability_risks: np.ndarray
     predicted_control_costs: np.ndarray
-    predicted_duplication_costs: np.ndarray
     predicted_handover_costs: np.ndarray
     predicted_preparation_costs: np.ndarray
     service_costs: np.ndarray
@@ -184,12 +169,11 @@ class LookaheadReasoner:
         self.discount = float(config.get("discount", 0.95))
         self.epsilon = float(config.get("score_epsilon", 1e-8))
         self.score_clip = float(config.get("score_clip", 5.0))
-        self.duplication_hold_steps = int(config.get("duplication_hold_steps", 1))
         self.reliability_risk_temperature = float(
             config.get("reliability_risk_temperature", 0.10)
         )
-        if self.horizon <= 0 or self.score_clip <= 0.0 or self.duplication_hold_steps < 0:
-            raise ValueError("reasoning horizon/score_clip must be positive and hold steps non-negative")
+        if self.horizon <= 0 or self.score_clip <= 0.0:
+            raise ValueError("reasoning horizon and score_clip must be positive")
         if self.reliability_risk_temperature <= 0.0:
             raise ValueError("reasoning reliability_risk_temperature must be positive")
         self.lambda_resource = float(reward_config.get("lambda_resource", 0.25))
@@ -215,10 +199,8 @@ class LookaheadReasoner:
             # V3 M3 is local: dynamic cross-UE activity/demand enters decisions
             # only through M4 prices, never through a direct aggregate shortcut.
             active_count = 0.0
-            aggregate_required_rate = 0.0
         else:
             active_count = float(np.sum(active))
-            aggregate_required_rate = float(np.sum(required_rates))
         features = np.ones((env.num_agents, env.action_dim), dtype=np.float64)
         raw_costs = np.full((env.num_agents, env.action_dim), self.score_clip, dtype=np.float64)
         predicted = np.ones((env.num_agents, env.action_dim), dtype=np.float64)
@@ -230,7 +212,6 @@ class LookaheadReasoner:
             (env.num_agents, env.action_dim), dtype=np.float64
         )
         predicted_control_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
-        predicted_duplication_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
         predicted_handover_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
         predicted_preparation_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
         service_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
@@ -265,7 +246,6 @@ class LookaheadReasoner:
                         available,
                         current_prices,
                         outage_dual_mu,
-                        aggregate_required_rate,
                         active_count,
                     )
                     for plan, target in action_plans
@@ -280,7 +260,6 @@ class LookaheadReasoner:
                     predicted_outage,
                     planning_reliability_risk,
                     predicted_control_cost,
-                    predicted_duplication_cost,
                     predicted_handover_cost,
                     predicted_preparation_cost,
                 ) = best_evaluation
@@ -293,7 +272,6 @@ class LookaheadReasoner:
                 predicted_outages[ue.ue_id, action] = predicted_outage
                 planning_reliability_risks[ue.ue_id, action] = planning_reliability_risk
                 predicted_control_costs[ue.ue_id, action] = predicted_control_cost
-                predicted_duplication_costs[ue.ue_id, action] = predicted_duplication_cost
                 predicted_handover_costs[ue.ue_id, action] = predicted_handover_cost
                 predicted_preparation_costs[ue.ue_id, action] = predicted_preparation_cost
             feasible = np.flatnonzero(masks[ue.ue_id] > 0.0)
@@ -321,7 +299,6 @@ class LookaheadReasoner:
                 predicted_outages,
                 planning_reliability_risks,
                 predicted_control_costs,
-                predicted_duplication_costs,
                 predicted_handover_costs,
                 predicted_preparation_costs,
                 service_costs,
@@ -340,7 +317,6 @@ class LookaheadReasoner:
             predicted_outages,
             planning_reliability_risks,
             predicted_control_costs,
-            predicted_duplication_costs,
             predicted_handover_costs,
             predicted_preparation_costs,
             service_costs,
@@ -368,30 +344,11 @@ class LookaheadReasoner:
                 prep_wait = [0] * int(env.protocol_cfg["preparation_steps"])
                 switch_wait = [0] * int(env.protocol_cfg["switching_steps"])
                 add(action, [action, *prep_wait, env.commit_action, *switch_wait], target)
-                add(
-                    action,
-                    [
-                        action,
-                        *prep_wait,
-                        env.dup_on_action,
-                        *([0] * self.duplication_hold_steps),
-                        env.commit_action,
-                    ],
-                    target,
-                )
         elif ue.state == MobilityState.PREPARED and ue.protocol_timer > 0:
             add(env.release_action, [env.release_action])
         elif ue.state == MobilityState.PREPARED:
-            add(
-                env.dup_on_action,
-                [env.dup_on_action, *([0] * self.duplication_hold_steps), env.commit_action],
-            )
             add(env.commit_action, [env.commit_action])
             add(env.release_action, [env.release_action])
-        elif ue.state == MobilityState.DUPLICATING:
-            add(env.commit_action, [env.commit_action])
-            add(env.dup_off_action, [env.dup_off_action])
-            add(env.rollback_action, [env.rollback_action])
         for action in np.flatnonzero(mask > 0.0):
             if int(action) not in plans:
                 add(int(action), [int(action)])
@@ -401,7 +358,7 @@ class LookaheadReasoner:
         self, env: LEOMobilityEnv, state: _HypotheticalState, offset: int, ue_id: int
     ) -> None:
         if (
-            state.mobility_state in (MobilityState.PREPARED, MobilityState.DUPLICATING)
+            state.mobility_state == MobilityState.PREPARED
             and state.secondary_cell is not None
         ):
             elevation, _ = elevation_and_distance(
@@ -440,18 +397,8 @@ class LookaheadReasoner:
             state.mobility_state = MobilityState.PREPARED
             state.timer = int(env.protocol_cfg["preparation_steps"])
         elif (
-            action == env.dup_on_action
-            and state.mobility_state == MobilityState.PREPARED
-            and state.timer == 0
-            and state.secondary_cell is not None
-        ):
-            state.mobility_state = MobilityState.DUPLICATING
-        elif action == env.dup_off_action:
-            state.mobility_state = MobilityState.PREPARED
-            state.timer = 0
-        elif (
             action == env.commit_action
-            and state.mobility_state in (MobilityState.PREPARED, MobilityState.DUPLICATING)
+            and state.mobility_state == MobilityState.PREPARED
             and state.timer == 0
             and state.secondary_cell is not None
         ):
@@ -470,7 +417,7 @@ class LookaheadReasoner:
                 state.mobility_state = MobilityState.SWITCHING
                 state.timer = int(env.protocol_cfg["switching_steps"])
                 handover_started = True
-        elif action in (env.release_action, env.rollback_action):
+        elif action == env.release_action:
             state.secondary_cell = None
             state.mobility_state = MobilityState.SINGLE
             state.timer = 0
@@ -555,10 +502,8 @@ class LookaheadReasoner:
         available: np.ndarray,
         prices: np.ndarray,
         outage_dual_mu: float,
-        aggregate_required_rate: float,
         active_count: float,
     ) -> tuple[
-        float,
         float,
         float,
         float,
@@ -592,7 +537,6 @@ class LookaheadReasoner:
         total_predicted_outage = 0.0
         total_planning_reliability_risk = 0.0
         total_control_cost = 0.0
-        total_duplication_cost = 0.0
         total_handover_cost = 0.0
         total_preparation_cost = 0.0
         total_discount_weight = 0.0
@@ -623,41 +567,6 @@ class LookaheadReasoner:
             action_demand = np.zeros(env.num_cells, dtype=np.float64)
             if state.primary_cell is not None:
                 action_demand[state.primary_cell] += primary_fraction
-            duplication_cost = 0.0
-            if state.mobility_state == MobilityState.DUPLICATING and state.secondary_cell is not None:
-                (
-                    secondary_rate,
-                    secondary_potential_rate,
-                    secondary_success,
-                    secondary_fraction,
-                ) = self._predicted_leg(
-                    env, ue_id, state.secondary_cell, offset, required_rate, available
-                )
-                stream_rate, potential_stream_rate = _duplicated_stream_rates(
-                    primary_rate,
-                    primary_potential_rate,
-                    secondary_rate,
-                    secondary_potential_rate,
-                )
-                probability = joint_delivery_probability(
-                    primary_success, secondary_success, failure_correlation=0.15
-                )
-                transmission_rate = stream_rate
-                potential_transmission_rate = potential_stream_rate
-                delivery_probability = probability
-                # Retained as a diagnostic in V3 and as a ranked V2 heuristic.
-                if env.v3_enabled:
-                    nominal_other_rate = max(0, env.num_agents - 1) * required_rate
-                    network_base_rate = nominal_other_rate + stream_rate
-                else:
-                    network_base_rate = (
-                        max(0.0, aggregate_required_rate - required_rate) + stream_rate
-                    )
-                duplication_cost = stream_rate / (
-                    network_base_rate + stream_rate + self.epsilon
-                )
-                duplication_cost = float(np.clip(duplication_cost, 0.0, 1.0))
-                action_demand[state.secondary_cell] += secondary_fraction
             service_goodput, reliability_goodput = _predicted_goodputs(
                 transmission_rate,
                 potential_transmission_rate,
@@ -676,7 +585,6 @@ class LookaheadReasoner:
                 first_deficit = deficit
             reservation_active = state.mobility_state in (
                 MobilityState.PREPARED,
-                MobilityState.DUPLICATING,
                 MobilityState.SWITCHING,
             )
             preparation_cost = rho_preparation / env.num_cells if reservation_active else 0.0
@@ -696,24 +604,8 @@ class LookaheadReasoner:
                     baseline_demand[baseline_state.primary_cell] += (
                         baseline_primary_fraction
                     )
-                if (
-                    baseline_state.mobility_state == MobilityState.DUPLICATING
-                    and baseline_state.secondary_cell is not None
-                ):
-                    *_, baseline_secondary_fraction = self._predicted_leg(
-                        env,
-                        ue_id,
-                        baseline_state.secondary_cell,
-                        offset,
-                        required_rate,
-                        available,
-                    )
-                    baseline_demand[baseline_state.secondary_cell] += (
-                        baseline_secondary_fraction
-                    )
                 baseline_reservation_active = baseline_state.mobility_state in (
                     MobilityState.PREPARED,
-                    MobilityState.DUPLICATING,
                     MobilityState.SWITCHING,
                 )
                 if (
@@ -734,8 +626,7 @@ class LookaheadReasoner:
             )
             handover_cost = float(handover_started) / handover_normalizer
             control_cost = (
-                duplication_cost
-                + self.eta_preparation * preparation_cost
+                self.eta_preparation * preparation_cost
                 + self.eta_handover * handover_cost
             )
             predicted_outage = _predicted_outage_probability(
@@ -789,7 +680,6 @@ class LookaheadReasoner:
                 discount_weight * planning_reliability_risk
             )
             total_control_cost += discount_weight * control_cost
-            total_duplication_cost += discount_weight * duplication_cost
             total_handover_cost += discount_weight * handover_cost
             total_preparation_cost += discount_weight * preparation_cost
             total_discount_weight += discount_weight
@@ -809,7 +699,6 @@ class LookaheadReasoner:
                 )
             ),
             float(total_control_cost / diagnostic_scale),
-            float(np.clip(total_duplication_cost / diagnostic_scale, 0.0, 1.0)),
             float(np.clip(total_handover_cost / diagnostic_scale, 0.0, 1.0)),
             float(np.clip(total_preparation_cost / diagnostic_scale, 0.0, 1.0)),
         )

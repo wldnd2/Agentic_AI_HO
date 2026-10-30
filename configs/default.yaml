@@ -85,7 +85,6 @@ reasoning:
   discount: 0.95
   score_epsilon: 1.0e-8
   score_clip: 5.0
-  duplication_hold_steps: 1
 coordination:
   price_learning_rate: 0.05
   price_max: 5.0

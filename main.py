@@ -71,7 +71,7 @@ def train(args: argparse.Namespace) -> None:
         print(
             f"iteration={iteration + 1:04d} reward={rollout_metrics.get('team_reward', 0.0):8.3f} "
             f"miss={rollout_metrics.get('deadline_misses', 0.0):6.3f} "
-            f"dup_cost={rollout_metrics.get('duplication_train_cost', 0.0):6.3f} "
+            f"prep_cost={rollout_metrics.get('preparation_train_cost', 0.0):6.3f} "
             f"actor_loss={losses['actor_loss']:7.4f}"
         )
         completed_iteration = iteration + 1
@@ -169,7 +169,7 @@ def _save_training_plots(history: list[dict[str, float]], output_dir: Path) -> N
         axis.set(xlabel="iteration", ylabel="ratio"); axis.legend()
         fig.tight_layout(); fig.savefig(output_dir / "core_kpi.png"); plt.close(fig)
 
-        action_names = ("stay", "prepare", "dup_on", "dup_off", "commit", "release", "rollback")
+        action_names = ("stay", "prepare", "commit", "release")
         fig, axis = plt.subplots(figsize=(9, 5))
         for name in action_names:
             axis.plot(x, series(f"action_{name}_fraction"), label=name.upper())
@@ -209,7 +209,7 @@ def _save_training_plots(history: list[dict[str, float]], output_dir: Path) -> N
         mobility_metrics = (
             "handover_started",
             "pingpong_rate",
-            "dro",
+            "preparation_rejection_rate",
             "handover_control_cost",
         )
         for axis, name in zip(axes.flat, mobility_metrics):

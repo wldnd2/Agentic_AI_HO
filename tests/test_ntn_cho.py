@@ -47,7 +47,7 @@ def test_d2_entering_condition_matches_ts38331():
     for _ in range(300):
         actions = policy(env)
         for ue in env.ues:
-            if actions[ue.ue_id] == env.commit_action and ue.state in (MobilityState.PREPARED, MobilityState.DUPLICATING):
+            if actions[ue.ue_id] == env.commit_action and ue.state == MobilityState.PREPARED:
                 ml1 = policy._distance(env, ue.ue_id, ue.primary_cell)
                 ml2 = policy._distance(env, ue.ue_id, ue.secondary_cell)
                 assert ml1 - policy.hys > policy.thresh1 and ml2 + policy.hys < policy.thresh2

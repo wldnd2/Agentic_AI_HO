@@ -12,7 +12,6 @@ class LegRequest:
     spectral_efficiency: float
     priority: float
     demand_bps: float
-    is_secondary: bool
 
 
 @dataclass

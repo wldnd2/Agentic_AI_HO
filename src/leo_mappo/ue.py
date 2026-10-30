@@ -12,9 +12,8 @@ from .satellite import ground_position_ecef
 class MobilityState(IntEnum):
     SINGLE = 0
     PREPARED = 1
-    DUPLICATING = 2
-    SWITCHING = 3
-    COOLDOWN = 4
+    SWITCHING = 2
+    COOLDOWN = 3
 
 
 @dataclass

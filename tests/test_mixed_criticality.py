@@ -22,7 +22,7 @@ def _env(mixed: bool, ues: int = 48, rate: float = 0.6, steps: int | None = None
 
 def test_default_scenario_is_unchanged():
     env = _env(False)
-    assert not env.traffic_classes and env.obs_dim == 16 + 7 * env.candidate_count
+    assert not env.traffic_classes and env.obs_dim == 14 + 7 * env.candidate_count
     assert all(not u.critical and u.reward_weight == 1.0 and u.traffic_class == "default" for u in env.ues)
     env.reset(seed=1)
     info = env.step(np.zeros(env.num_agents, dtype=np.int64)).info
@@ -32,7 +32,7 @@ def test_default_scenario_is_unchanged():
 def test_class_assignment_rates_and_observation_flag():
     env = _env(True)
     crit = [u for u in env.ues if u.critical]
-    assert len(crit) == 12 and env.obs_dim == 16 + 7 * env.candidate_count + 1
+    assert len(crit) == 12 and env.obs_dim == 14 + 7 * env.candidate_count + 1
     assert all(u.deadline_s == 1.0 and u.qos_priority == 2.0 and u.reward_weight == 5.0 for u in crit)
     # Mean offered load stays at 48 x 0.6 = 28.8 Mb/s (class rate scales, before the +-35 % spread).
     nominal = sum(0.6 * (0.3333 if u.critical else 1.2222) for u in env.ues)
@@ -47,9 +47,10 @@ def test_class_weighted_deficit_and_per_class_metrics():
     env.reset(seed=3)
     out = env.step(np.zeros(env.num_agents, dtype=np.int64))
     info = out.info
-    for k in ("critical_outage_ratio", "noncritical_outage_ratio", "critical_duplication_fraction",
+    for k in ("critical_outage_ratio", "noncritical_outage_ratio",
               "critical_deadline_misses", "critical_arrivals"):
         assert k in info and info[k] >= 0.0
+    assert out.agent_outcomes.shape == (env.num_agents, 5)
     deficits = out.agent_outcomes[:, 2]
     active = out.agent_active > 0.0
     w = np.array([u.reward_weight for u in env.ues])
@@ -65,12 +66,11 @@ def test_trainer_constrains_the_critical_outage():
     assert 0.0 <= m["greedy_outage"] <= 1.0 and np.isfinite(m["lambda_out"])
 
 
-def test_duplication_can_be_disabled_for_the_ablation():
-    cfg = load_config(CFG / "default.yaml", [*TWC, CFG / "twc_mixed_criticality.yaml", CFG / "legacy_pdcp/twc_no_duplication.yaml"])
-    env = LEOMobilityEnv(cfg)
+def test_mixed_criticality_action_masks_use_cho_only_actions():
+    env = _env(True)
     env.reset(seed=4)
-    for _ in range(60):
-        masks = env.action_masks()
-        assert np.all(masks[:, env.dup_on_action] == 0.0)
-        env.step(env.sample_valid_actions())
-    assert _env(True).duplication_enabled
+    assert env.action_dim == env.candidate_count + 3
+    for _ in range(10):
+        actions = env.sample_valid_actions()
+        assert np.all(actions < env.action_dim)
+        env.step(actions)

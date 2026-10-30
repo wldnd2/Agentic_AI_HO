@@ -10,7 +10,6 @@ import numpy as np
 from .channel import ChannelModel, LinkResult
 from .coordinator import compute_training_reward
 from .events import EventGenerator
-from .pdcp import joint_delivery_probability
 from .satellite import (
     SatelliteCell,
     circular_orbital_period_s,
@@ -42,7 +41,7 @@ class StepOutput:
 class LEOMobilityEnv:
     """Multi-UE LEO mobility environment with shared cell capacity.
 
-    MAPPO controls target preparation, PDCP duplication, and primary switching.
+    MAPPO controls target preparation and primary switching.
     A fixed scheduler owns radio-resource allocation.
     """
 
@@ -55,7 +54,6 @@ class LEOMobilityEnv:
         self.telemetry_cfg = self.v3_cfg.get("observation", {})
         self.latent_cfg = self.v3_cfg.get("latent_degradation", {})
         self.preparation_admission_cfg = self.v3_cfg.get("preparation_admission", {})
-        self.duplication_cfg = self.v3_cfg.get("duplication", {})
         self.coordination_demand_cfg = self.v3_cfg.get("coordination_demand", {})
         self.sat_cfg = config["satellite"]
         self.channel_cfg = config["channel"]
@@ -77,7 +75,7 @@ class LEOMobilityEnv:
         self.num_agents = int(self.env_cfg["num_ues"])
         self.num_cells = int(self.env_cfg["num_satellites"])
         self.candidate_count = int(self.env_cfg["candidate_count"])
-        self.action_dim = self.candidate_count + 6
+        self.action_dim = self.candidate_count + 3
         # Optional traffic classes (mixed-criticality scenario). Without them the
         # environment is the single-class model used for all earlier results.
         self.traffic_classes = [dict(c) for c in (config.get("traffic_classes") or [])]
@@ -85,9 +83,7 @@ class LEOMobilityEnv:
             total = sum(float(c["fraction"]) for c in self.traffic_classes)
             if abs(total - 1.0) > 1e-6:
                 raise ValueError("traffic_classes fractions must sum to 1")
-        self.obs_dim = 16 + 7 * self.candidate_count + (1 if self.traffic_classes else 0)
-        # Ablation switch: duplication.enabled = false removes DupOn from every mask.
-        self.duplication_enabled = bool(config.get("duplication", {}).get("enabled", True))
+        self.obs_dim = 14 + 7 * self.candidate_count + (1 if self.traffic_classes else 0)
         self.global_state_dim = self.num_agents * self.obs_dim + 2 * self.num_cells
         self.environment_seed = int(config.get("environment_seed", config.get("seed", 0)))
         self.rng = np.random.default_rng(self.environment_seed)
@@ -138,7 +134,6 @@ class LEOMobilityEnv:
         self.last_serving_demand = np.zeros(self.num_cells, dtype=np.float64)
         self.last_preparation_demand = np.zeros(self.num_cells, dtype=np.float64)
         self.last_preparation_intent_count = np.zeros(self.num_cells, dtype=np.float64)
-        self.last_duplication_demand = np.zeros(self.num_cells, dtype=np.float64)
         self.last_coordination_demand = np.zeros(self.num_cells, dtype=np.float64)
         self.links: list[list[LinkResult]] = []
         self.remaining_visibility = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
@@ -149,7 +144,7 @@ class LEOMobilityEnv:
         # Fraction of the current epoch lost to handover execution
         # (TR 38.821 Sec. 7.3.2.1.1: DL interruption ~ 2 RTT + processing).
         self._ho_interruption = np.zeros(self.num_agents, dtype=np.float64)
-        self._last_agent_outcomes = np.zeros((self.num_agents, 6), dtype=np.float64)
+        self._last_agent_outcomes = np.zeros((self.num_agents, 5), dtype=np.float64)
         self._last_agent_active = np.zeros(self.num_agents, dtype=np.float64)
         self.observed_sinr = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
         self.observed_efficiency = np.zeros((self.num_agents, self.num_cells), dtype=np.float64)
@@ -172,24 +167,12 @@ class LEOMobilityEnv:
         return 1
 
     @property
-    def dup_on_action(self) -> int:
+    def commit_action(self) -> int:
         return self.candidate_count + 1
 
     @property
-    def dup_off_action(self) -> int:
-        return self.candidate_count + 2
-
-    @property
-    def commit_action(self) -> int:
-        return self.candidate_count + 3
-
-    @property
     def release_action(self) -> int:
-        return self.candidate_count + 4
-
-    @property
-    def rollback_action(self) -> int:
-        return self.candidate_count + 5
+        return self.candidate_count + 2
 
     # Service region used for UE placement (radians); shared with the
     # Walker-slice visibility filter.
@@ -389,7 +372,6 @@ class LEOMobilityEnv:
         self.last_serving_demand.fill(0.0)
         self.last_preparation_demand.fill(0.0)
         self.last_preparation_intent_count.fill(0.0)
-        self.last_duplication_demand.fill(0.0)
         self.last_coordination_demand.fill(0.0)
         self.channel.reset()
         self.events.reset()
@@ -599,18 +581,9 @@ class LEOMobilityEnv:
             elif ue.state == MobilityState.PREPARED:
                 secondary = ue.secondary_cell
                 if secondary is not None and self.links[ue.ue_id][secondary].visible:
-                    if self.duplication_enabled:
-                        mask[self.dup_on_action] = 1.0
                     if self._commit_feasible(ue):
                         mask[self.commit_action] = 1.0
                 mask[self.release_action] = 1.0
-            elif ue.state == MobilityState.DUPLICATING:
-                secondary = ue.secondary_cell
-                if secondary is not None and self.links[ue.ue_id][secondary].visible:
-                    mask[self.dup_off_action] = 1.0
-                    if self._commit_feasible(ue):
-                        mask[self.commit_action] = 1.0
-                    mask[self.rollback_action] = 1.0
         return masks
 
     def _commit_feasible(self, ue: UE) -> bool:
@@ -635,7 +608,7 @@ class LEOMobilityEnv:
         }
         self._last_ho_outcomes.fill(0.0)
         for ue in self.ues:
-            if ue.state in (MobilityState.PREPARED, MobilityState.DUPLICATING):
+            if ue.state == MobilityState.PREPARED:
                 secondary = ue.secondary_cell
                 if secondary is None or not self.links[ue.ue_id][secondary].visible:
                     ue.secondary_cell = None
@@ -696,12 +669,10 @@ class LEOMobilityEnv:
             "preparation_rejected": 0,
             "preparation_admitted": 0,
             "release_count": 0,
-            "rollback_count": 0,
             "prepare_to_release_without_commit": 0,
             "prepare_to_commit": 0,
             "prepared_duration_sum": 0,
             "prepared_duration_count": 0,
-            "duplication_activation_count": 0,
         }
         valid_actions = np.full(self.num_agents, int(Action.STAY), dtype=np.int64)
         self.last_preparation_intent_count.fill(0.0)
@@ -715,13 +686,10 @@ class LEOMobilityEnv:
         # Releases are resolved before preparation occupancy is measured.
         for ue in self.ues:
             action = int(valid_actions[ue.ue_id])
-            if action in (self.release_action, self.rollback_action):
-                if action == self.release_action:
-                    counters["release_count"] += 1
-                    if self._prepared_since[ue.ue_id] >= 0:
-                        counters["prepare_to_release_without_commit"] += 1
-                else:
-                    counters["rollback_count"] += 1
+            if action == self.release_action:
+                counters["release_count"] += 1
+                if self._prepared_since[ue.ue_id] >= 0:
+                    counters["prepare_to_release_without_commit"] += 1
                 if self._prepared_since[ue.ue_id] >= 0:
                     counters["prepared_duration_sum"] += (
                         self.step_index - int(self._prepared_since[ue.ue_id])
@@ -736,7 +704,6 @@ class LEOMobilityEnv:
         for existing in self.ues:
             if existing.secondary_cell is not None and existing.state in (
                 MobilityState.PREPARED,
-                MobilityState.DUPLICATING,
                 MobilityState.SWITCHING,
             ):
                 preparation_counts[existing.secondary_cell] += 1
@@ -746,12 +713,7 @@ class LEOMobilityEnv:
         rho = float(self.protocol_cfg["preparation_resource_fraction"])
 
         def apply_non_prepare_action(ue: UE, action: int) -> None:
-            if action == self.dup_on_action:
-                ue.state = MobilityState.DUPLICATING
-                counters["duplication_activation_count"] += 1
-            elif action == self.dup_off_action:
-                ue.state = MobilityState.PREPARED
-            elif action == self.commit_action:
+            if action == self.commit_action:
                 if self._prepared_since[ue.ue_id] >= 0:
                     counters["prepare_to_commit"] += 1
                     counters["prepared_duration_sum"] += (
@@ -852,7 +814,6 @@ class LEOMobilityEnv:
         for ue in self.ues:
             if ue.state in (
                 MobilityState.PREPARED,
-                MobilityState.DUPLICATING,
                 MobilityState.SWITCHING,
             ) and ue.secondary_cell is not None:
                 reservation[ue.secondary_cell] += rho
@@ -873,7 +834,7 @@ class LEOMobilityEnv:
         capacity_scale = np.array([satellite.effective_capacity_scale for satellite in self.satellites])
         unschedulable_data_leg_count = 0
 
-        def add_usable_request(ue: UE, cell_id: int, demand: float, is_secondary: bool) -> None:
+        def add_usable_request(ue: UE, cell_id: int, demand: float) -> None:
             nonlocal unschedulable_data_leg_count
             link = self.links[ue.ue_id][cell_id]
             unit_capacity = bandwidth[cell_id] * link.spectral_efficiency * capacity_scale[cell_id]
@@ -891,7 +852,6 @@ class LEOMobilityEnv:
                     link.spectral_efficiency,
                     ue.qos_priority,
                     demand,
-                    is_secondary,
                 )
             )
 
@@ -900,15 +860,12 @@ class LEOMobilityEnv:
             if demand <= 0.0:
                 continue
             if ue.primary_cell is not None:
-                add_usable_request(ue, ue.primary_cell, demand, False)
-            if ue.state == MobilityState.DUPLICATING and ue.secondary_cell is not None:
-                add_usable_request(ue, ue.secondary_cell, demand, True)
+                add_usable_request(ue, ue.primary_cell, demand)
         preparation = self._compute_preparation_reservations()
         if np.any(preparation > 1.0 + 1e-9):
             raise RuntimeError("preparation admission violated the shared-capacity constraint")
         schedule = self.scheduler.allocate(requests, bandwidth, capacity_scale, 1.0 - preparation)
         serving_demand = np.zeros(self.num_cells, dtype=np.float64)
-        duplication_demand = np.zeros(self.num_cells, dtype=np.float64)
         for request in requests:
             unit_capacity = (
                 bandwidth[request.cell_id]
@@ -916,43 +873,21 @@ class LEOMobilityEnv:
                 * max(0.0, capacity_scale[request.cell_id])
             )
             fraction = min(1.0, max(0.0, request.demand_bps / (unit_capacity + self.epsilon_capacity)))
-            if request.is_secondary:
-                duplication_demand[request.cell_id] += fraction
-            else:
-                serving_demand[request.cell_id] += fraction
+            serving_demand[request.cell_id] += fraction
         expected_goodput = np.zeros(self.num_agents, dtype=np.float64)
         delivered_by_ue = np.zeros(self.num_agents, dtype=np.float64)
-        duplicated_bits = 0.0
         useful_bits = 0.0
         delivered = 0
-        queue_snapshot_rates = np.asarray(
-            [ue.queue_packets * ue.packet_size_bits / max(self.interval_s, 1e-8) for ue in self.ues],
-            dtype=np.float64,
-        )
         for ue in self.ues:
             primary = ue.primary_cell
             primary_rate = schedule.rates_bps.get((ue.ue_id, primary), 0.0)
             primary_success = self.links[ue.ue_id][primary].packet_success_probability if primary is not None else 0.0
-            if ue.state == MobilityState.DUPLICATING and ue.secondary_cell is not None:
-                secondary = ue.secondary_cell
-                secondary_rate = schedule.rates_bps.get((ue.ue_id, secondary), 0.0)
-                rate = min(primary_rate, secondary_rate)
-                probability = joint_delivery_probability(
-                    primary_success,
-                    self.links[ue.ue_id][secondary].packet_success_probability,
-                    failure_correlation=float(
-                        self.duplication_cfg.get("failure_correlation", 0.15)
-                    ),
-                )
-            else:
-                rate = primary_rate
-                probability = primary_success
+            rate = primary_rate
+            probability = primary_success
             rate *= 1.0 - self._ho_interruption[ue.ue_id]
             stream_rate = min(rate, ue.queue_packets * ue.packet_size_bits / max(self.interval_s, 1e-8))
             expected_goodput[ue.ue_id] = stream_rate * probability
             useful_bits += stream_rate * self.interval_s
-            if ue.state == MobilityState.DUPLICATING and ue.secondary_cell is not None:
-                duplicated_bits += stream_rate * self.interval_s
             packet_budget = int(rate * self.interval_s / ue.packet_size_bits)
             delivered_by_ue[ue.ue_id] = ue.deliver(packet_budget, probability, self.rng)
             delivered += int(delivered_by_ue[ue.ue_id])
@@ -977,16 +912,11 @@ class LEOMobilityEnv:
             )
         else:
             self.last_preparation_demand = preparation.copy()
-        self.last_duplication_demand = duplication_demand
-        if self.v3_enabled:
-            self.last_coordination_demand = (
-                float(self.coordination_demand_cfg.get("serving_weight", 1.0)) * serving_demand
-                + float(self.coordination_demand_cfg.get("preparation_weight", 1.0))
-                * self.last_preparation_demand
-                + float(self.coordination_demand_cfg.get("duplication_weight", 1.0)) * duplication_demand
-            )
-        else:
-            self.last_coordination_demand = self.last_requested_pressure.copy()
+        self.last_coordination_demand = (
+            float(self.coordination_demand_cfg.get("serving_weight", 1.0)) * serving_demand
+            + float(self.coordination_demand_cfg.get("preparation_weight", 1.0))
+            * self.last_preparation_demand
+        )
         epsilon = float(self.reward_cfg.get("epsilon", 1e-8))
         deficits = np.where(
             active > 0.0,
@@ -1023,38 +953,20 @@ class LEOMobilityEnv:
         outage = (active > 0.0) & (
             realized_goodput < self.outage_service_ratio * required_rates
         )
-        duplication_train_cost = (
-            duplicated_bits / (useful_bits + duplicated_bits + epsilon)
-            if useful_bits > 0.0 or duplicated_bits > 0.0
-            else 0.0
-        )
         preparation_train_cost = float(preparation.mean())
-        duplication_gain = np.zeros(self.num_agents, dtype=np.float64)
         resource_outcome = np.zeros(self.num_agents, dtype=np.float64)
         congestion_outcome = np.zeros(self.num_agents, dtype=np.float64)
         eta_preparation = float(self.reward_cfg["eta_preparation"])
         for ue in self.ues:
             ue_id = ue.ue_id
             primary = ue.primary_cell
-            primary_rate = schedule.rates_bps.get((ue_id, primary), 0.0)
-            queue_rate = queue_snapshot_rates[ue_id]
-            primary_stream = min(primary_rate, queue_rate)
-            primary_success = self.links[ue_id][primary].packet_success_probability if primary is not None else 0.0
-            primary_goodput = primary_stream * primary_success
-            if ue.state == MobilityState.DUPLICATING:
-                duplication_gain[ue_id] = np.clip(
-                    max(0.0, expected_goodput[ue_id] - primary_goodput)
-                    / (required_rates[ue_id] + epsilon),
-                    0.0,
-                    1.0,
-                )
-            duplication_indicator = float(ue.state == MobilityState.DUPLICATING)
             preparation_indicator = float(
-                ue.state in (MobilityState.PREPARED, MobilityState.DUPLICATING)
+                ue.state in (MobilityState.PREPARED, MobilityState.SWITCHING)
+                and ue.secondary_cell is not None
             )
             resource_outcome[ue_id] = (
-                duplication_indicator + eta_preparation * preparation_indicator
-            ) / (1.0 + eta_preparation)
+                eta_preparation * preparation_indicator / (1.0 + eta_preparation)
+            )
             experienced_pressure = self.last_pressure[primary] if primary is not None else 0.0
             if ue.secondary_cell is not None:
                 experienced_pressure = max(experienced_pressure, self.last_pressure[ue.secondary_cell])
@@ -1065,7 +977,6 @@ class LEOMobilityEnv:
                 self._last_ho_outcomes,
                 outage.astype(np.float64),
                 deficits,
-                duplication_gain,
                 resource_outcome,
                 congestion_outcome,
             ]
@@ -1073,7 +984,6 @@ class LEOMobilityEnv:
         class_metrics: dict[str, float] = {}
         if self.traffic_classes:
             crit = np.asarray([ue.critical for ue in self.ues], dtype=bool)
-            dup = np.asarray([ue.state == MobilityState.DUPLICATING for ue in self.ues], dtype=bool)
             on = active > 0.0
             for tag, mask in (("critical", crit), ("noncritical", ~crit)):
                 n_on = float(np.count_nonzero(on & mask))
@@ -1081,13 +991,10 @@ class LEOMobilityEnv:
                 class_metrics[f"{tag}_outage_ue_count"] = float(np.count_nonzero(outage & mask))
                 class_metrics[f"{tag}_outage_ratio"] = float(np.count_nonzero(outage & mask)) / (n_on + epsilon)
                 class_metrics[f"{tag}_deficit"] = float(deficits[on & mask].mean()) if n_on else 0.0
-                class_metrics[f"{tag}_duplication_fraction"] = (
-                    float(np.count_nonzero(dup & mask)) / max(int(mask.sum()), 1))
         return {
             **class_metrics,
             "delivered_packets": float(delivered),
             "service_deficit": service_deficit,
-            "duplication_train_cost": float(np.clip(duplication_train_cost, 0.0, 1.0)),
             "preparation_train_cost": preparation_train_cost,
             "active_ue_count": float(active.sum()),
             "outage_ue_count": float(outage.sum()),
@@ -1096,7 +1003,6 @@ class LEOMobilityEnv:
             "service_ratio_sum": service_ratio_sum,
             "outage_service_ratio": self.outage_service_ratio,
             "useful_bits": float(useful_bits),
-            "duplicated_bits": float(duplicated_bits),
             "mean_utilization": float(self.last_utilization.mean()),
             "max_pressure": float(self.last_pressure.max(initial=0.0)),
             "requested_pressure_mean": float(self.last_requested_pressure.mean()),
@@ -1110,22 +1016,12 @@ class LEOMobilityEnv:
             "capacity_violation_count": float(violations),
             "unschedulable_data_leg_count": float(unschedulable_data_leg_count),
             "request_saturation_count": float(schedule.request_saturation_count),
-            "mean_duplication_gain": float(duplication_gain.mean()),
-            "useful_duplication_interval_count": float(np.count_nonzero(duplication_gain > 1e-8)),
-            "duplication_active_ue_count": float(
-                sum(ue.state == MobilityState.DUPLICATING for ue in self.ues)
-            ),
-            "duplication_active_time_fraction": float(
-                np.mean([ue.state == MobilityState.DUPLICATING for ue in self.ues])
-            ),
             "serving_demand_mean": float(serving_demand.mean()),
             "serving_demand_max": float(serving_demand.max(initial=0.0)),
             "preparation_demand_mean": float(self.last_preparation_demand.mean()),
             "preparation_demand_max": float(
                 self.last_preparation_demand.max(initial=0.0)
             ),
-            "duplication_demand_mean": float(duplication_demand.mean()),
-            "duplication_demand_max": float(duplication_demand.max(initial=0.0)),
             "aggregate_intended_demand_mean": float(self.last_coordination_demand.mean()),
             "aggregate_intended_demand_max": float(
                 self.last_coordination_demand.max(initial=0.0)
@@ -1147,11 +1043,8 @@ class LEOMobilityEnv:
             "action_prepare_fraction": float(
                 np.count_nonzero((actions >= self.prepare_start) & (actions < self.prepare_start + self.candidate_count))
             ) / self.num_agents,
-            "action_dup_on_fraction": float(np.count_nonzero(actions == self.dup_on_action)) / self.num_agents,
-            "action_dup_off_fraction": float(np.count_nonzero(actions == self.dup_off_action)) / self.num_agents,
             "action_commit_fraction": float(np.count_nonzero(actions == self.commit_action)) / self.num_agents,
             "action_release_fraction": float(np.count_nonzero(actions == self.release_action)) / self.num_agents,
-            "action_rollback_fraction": float(np.count_nonzero(actions == self.rollback_action)) / self.num_agents,
         }
         action_counts = self._apply_actions(actions, masks)
         effects = self._active_effects
@@ -1178,8 +1071,7 @@ class LEOMobilityEnv:
         handover_train_cost = float(np.clip(handover_train_cost, 0.0, 1.0))
         handover_control_cost = float(self.reward_cfg["eta_handover"]) * handover_train_cost
         control_cost = (
-            tx_metrics["duplication_train_cost"]
-            + float(self.reward_cfg["eta_preparation"]) * tx_metrics["preparation_train_cost"]
+            float(self.reward_cfg["eta_preparation"]) * tx_metrics["preparation_train_cost"]
             + handover_control_cost
         )
         outage_cost = tx_metrics["outage_ue_count"] / (tx_metrics["active_ue_count"] + epsilon)
@@ -1243,7 +1135,6 @@ class LEOMobilityEnv:
             # Preparation requests per active UE and epoch (signaling constraint).
             "signaling_cost": float(action_counts.get("preparation_requested", 0)) / (active_count + epsilon),
             "outage_ratio": float(outage_cost),
-            "dro": float(tx_metrics["duplicated_bits"] / (tx_metrics["useful_bits"] + epsilon)),
             "mean_valid_action_count": valid_action_count / self.num_agents,
             "prepare_count": float(action_counts["preparation_requested"]),
             "commit_count": float(action_counts["handover_started"]),
@@ -1295,14 +1186,12 @@ class LEOMobilityEnv:
         return observations, global_state, self.action_masks()
 
     def _observation(self, ue: UE) -> np.ndarray:
-        duplication = float(ue.state == MobilityState.DUPLICATING)
         one_hot_state = np.eye(len(MobilityState), dtype=np.float64)[int(ue.state)]
         values: list[float] = [
             ue.queue_packets / max(1, ue.max_queue_packets),
             np.clip(ue.head_of_line_delay_s / max(ue.deadline_s, 1e-6), 0.0, 2.0),
             np.clip(ue.mean_arrival_mbps / 5.0, 0.0, 2.0),
             ue.reliability_target,
-            duplication,
             *one_hot_state.tolist(),
             np.clip(ue.protocol_timer / 10.0, 0.0, 1.0),
         ]

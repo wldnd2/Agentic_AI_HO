@@ -8,10 +8,7 @@ Mapping of Rel-16/17 CHO onto the simulator's protocol state machine:
                    exceeds the serving cell by `exec_offset_db` for `ttt_steps`
                    consecutive control epochs (time-to-trigger), Commit.
   * Cancellation : if the prepared target falls below serving + `release_offset_db`
-                   for `release_steps` epochs, Release (or Dup-OFF when duplicating).
-  * Duplication  : optional (`dup_threshold_db`). While a target is prepared and the
-                   serving observed SINR drops below the threshold, activate PDCP
-                   duplication until execution or cancellation.
+                   for `release_steps` epochs, Release.
 
 Like the other V3-fair heuristics, the policies only use actor-visible telemetry
 (delayed, noisy `env.observed_sinr`) and the V3 candidate list (ranked by observed
@@ -37,14 +34,12 @@ class A3ConditionalHandover:
         ttt_steps: int = 2,
         release_offset_db: float = -1.0,
         release_steps: int = 3,
-        dup_threshold_db: float | None = None,
     ) -> None:
         self.prep_offset_db = float(prep_offset_db)
         self.exec_offset_db = float(exec_offset_db)
         self.ttt_steps = int(ttt_steps)
         self.release_offset_db = float(release_offset_db)
         self.release_steps = int(release_steps)
-        self.dup_threshold_db = None if dup_threshold_db is None else float(dup_threshold_db)
         self._exec_count: np.ndarray | None = None
         self._release_count: np.ndarray | None = None
         self._last_step = -1
@@ -81,7 +76,7 @@ class A3ConditionalHandover:
                     if best != primary and float(obs[uid, best]) > serving + self.prep_offset_db:
                         actions[uid] = env.prepare_start  # slot 0 = best observed candidate
 
-            elif ue.state in (MobilityState.PREPARED, MobilityState.DUPLICATING):
+            elif ue.state == MobilityState.PREPARED:
                 target = ue.secondary_cell
                 if target is None:
                     continue
@@ -98,17 +93,7 @@ class A3ConditionalHandover:
                 if self._exec_count[uid] >= self.ttt_steps:
                     actions[uid] = env.commit_action
                 elif self._release_count[uid] >= self.release_steps:
-                    actions[uid] = (
-                        env.dup_off_action
-                        if ue.state == MobilityState.DUPLICATING
-                        else env.release_action
-                    )
-                elif (
-                    self.dup_threshold_db is not None
-                    and ue.state == MobilityState.PREPARED
-                    and serving < self.dup_threshold_db
-                ):
-                    actions[uid] = env.dup_on_action
+                    actions[uid] = env.release_action
             else:
                 # Switching / Cooldown: protocol timers run, nothing to decide.
                 self._exec_count[uid] = 0
@@ -128,7 +113,6 @@ DEFAULT_PARAMS = {
     "ttt_steps": 2,
     "release_offset_db": -1.0,
     "release_steps": 3,
-    "dup_threshold_db": 4.0,
 }
 
 
@@ -148,7 +132,6 @@ def make_cho_policies(params: dict | None = None) -> dict:
                             "release_offset_db", "release_steps")}
     return {
         "CHO-A3-TTT": A3ConditionalHandover(**a3),
-        "CHO-A3-TTT+Dup": A3ConditionalHandover(**a3, dup_threshold_db=p["dup_threshold_db"]),
     }
 
 
@@ -236,7 +219,7 @@ class TimeBasedCHO:
                         self.target_rule, assigned)
                     assigned[candidates[best]] = assigned.get(candidates[best], 0) + 1
                     actions[uid] = env.prepare_start + best
-            elif ue.state in (MobilityState.PREPARED, MobilityState.DUPLICATING):
+            elif ue.state == MobilityState.PREPARED:
                 target = ue.secondary_cell
                 if target is None:
                     continue
@@ -247,7 +230,7 @@ class TimeBasedCHO:
                 if entering:
                     actions[uid] = env.commit_action
                 elif env.time_s > leave:
-                    actions[uid] = env.dup_off_action if ue.state == MobilityState.DUPLICATING else env.release_action
+                    actions[uid] = env.release_action
         return _mask_invalid(env, actions)
 
 
@@ -302,7 +285,7 @@ class LocationBasedCHO:
                         self.target_rule, assigned)
                     assigned[candidates[best]] = assigned.get(candidates[best], 0) + 1
                     actions[uid] = env.prepare_start + best
-            elif ue.state in (MobilityState.PREPARED, MobilityState.DUPLICATING):
+            elif ue.state == MobilityState.PREPARED:
                 target = ue.secondary_cell
                 if target is None:
                     continue
@@ -314,7 +297,7 @@ class LocationBasedCHO:
                 if self._enter[uid] >= self.ttt_steps:
                     actions[uid] = env.commit_action
                 elif self._leave[uid] >= self.release_steps and ml1 + self.hys < self.thresh1 - self.prep_margin:
-                    actions[uid] = env.dup_off_action if ue.state == MobilityState.DUPLICATING else env.release_action
+                    actions[uid] = env.release_action
             else:
                 self._enter[uid] = self._leave[uid] = 0
         return _mask_invalid(env, actions)
@@ -351,19 +334,3 @@ def _mask_invalid(env, actions: np.ndarray) -> np.ndarray:
         if masks[uid, int(actions[uid])] <= 0.0:
             actions[uid] = 0
     return actions
-
-
-class CriticalDuplicationA3(A3ConditionalHandover):
-    """A3 CHO that activates PDCP duplication for critical UEs as soon as a CHO
-    target is prepared (common practice for URLLC-type traffic); non-critical UEs
-    follow plain A3 CHO."""
-
-    def __call__(self, env) -> np.ndarray:
-        actions = super().__call__(env)
-        masks = env.action_masks()
-        for ue in env.ues:
-            uid = ue.ue_id
-            if (getattr(ue, "critical", False) and ue.state == MobilityState.PREPARED
-                    and actions[uid] == 0 and masks[uid, env.dup_on_action] > 0.0):
-                actions[uid] = env.dup_on_action
-        return actions

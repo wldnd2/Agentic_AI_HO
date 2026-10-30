@@ -27,7 +27,6 @@ def summarize_metrics(totals: dict[str, float], steps: int, epsilon: float = 1e-
     result["service_ratio_mean"] = totals.get("service_ratio_sum", 0.0) / (
         totals.get("active_ue_count", 0.0) + epsilon
     )
-    result["dro"] = totals.get("duplicated_bits", 0.0) / (totals.get("useful_bits", 0.0) + epsilon)
     result["handover_failure_rate"] = totals.get("handover_failure", 0.0) / (
         totals.get("handover_started", 0.0) + epsilon
     )
@@ -43,8 +42,6 @@ def summarize_metrics(totals: dict[str, float], steps: int, epsilon: float = 1e-
     result["prepare_rate"] = result.get("action_prepare_fraction", 0.0)
     result["release_rate"] = result.get("action_release_fraction", 0.0)
     result["commit_rate"] = result.get("action_commit_fraction", 0.0)
-    result["rollback_rate"] = result.get("action_rollback_fraction", 0.0)
-    result["duplication_activation_rate"] = result.get("action_dup_on_fraction", 0.0)
     result["prepare_to_release_without_commit_rate"] = totals.get(
         "prepare_to_release_without_commit", 0.0
     ) / (totals.get("preparation_admitted", 0.0) + epsilon)
@@ -299,9 +296,6 @@ class RolloutRunner:
                 metrics["reasoning_selected_control_cost"] += float(
                     np.mean(reasoning_result.predicted_control_costs[selected_rows, actions])
                 )
-                metrics["reasoning_selected_duplication_cost"] += float(
-                    np.mean(reasoning_result.predicted_duplication_costs[selected_rows, actions])
-                )
                 metrics["reasoning_selected_handover_cost"] += float(
                     np.mean(reasoning_result.predicted_handover_costs[selected_rows, actions])
                 )
@@ -320,7 +314,6 @@ class RolloutRunner:
                 metrics["reasoning_total_cost"] += 0.0
                 metrics["reasoning_selected_predicted_outage"] += 0.0
                 metrics["reasoning_selected_control_cost"] += 0.0
-                metrics["reasoning_selected_duplication_cost"] += 0.0
                 metrics["reasoning_selected_handover_cost"] += 0.0
                 metrics["reasoning_selected_preparation_cost"] += 0.0
                 metrics["reasoning_outage_action_spread"] += 0.0
@@ -562,9 +555,6 @@ def _evaluate_policy_impl(
                 totals["reasoning_selected_control_cost"] += float(
                     np.mean(reasoning_result.predicted_control_costs[selected_rows, actions])
                 )
-                totals["reasoning_selected_duplication_cost"] += float(
-                    np.mean(reasoning_result.predicted_duplication_costs[selected_rows, actions])
-                )
                 totals["reasoning_selected_handover_cost"] += float(
                     np.mean(reasoning_result.predicted_handover_costs[selected_rows, actions])
                 )
@@ -583,7 +573,6 @@ def _evaluate_policy_impl(
                 totals["reasoning_total_cost"] += 0.0
                 totals["reasoning_selected_predicted_outage"] += 0.0
                 totals["reasoning_selected_control_cost"] += 0.0
-                totals["reasoning_selected_duplication_cost"] += 0.0
                 totals["reasoning_selected_handover_cost"] += 0.0
                 totals["reasoning_selected_preparation_cost"] += 0.0
                 totals["reasoning_outage_action_spread"] += 0.0

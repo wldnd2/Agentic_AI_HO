@@ -11,7 +11,6 @@ from leo_mappo import LEOMobilityEnv, MAPPO, load_config
 from leo_mappo.coordinator import ReliabilityDualController, compute_training_reward
 from leo_mappo.reasoning import (
     LookaheadReasoner,
-    _duplicated_stream_rates,
     _planning_reliability_risk,
     _predicted_goodputs,
 )
@@ -128,16 +127,16 @@ class V3EnvironmentTest(unittest.TestCase):
             )
         self.assertTrue(all(left > right for left, right in zip(risks, risks[1:])))
 
-    def test_duplication_headroom_keeps_one_packet_stream(self) -> None:
-        service_rate, potential_rate = _duplicated_stream_rates(
-            primary_service_rate_bps=100.0,
-            primary_potential_rate_bps=200.0,
-            secondary_service_rate_bps=100.0,
-            secondary_potential_rate_bps=150.0,
-        )
-        self.assertEqual(service_rate, 100.0)
-        self.assertEqual(potential_rate, 150.0)
-        self.assertLess(potential_rate, 200.0 + 150.0)
+    def test_ready_prepared_mask_allows_stay_commit_and_release(self) -> None:
+        env = LEOMobilityEnv(v3_config())
+        env.reset(seed=41)
+        ue = next(ue for ue in env.ues if env.candidates[ue.ue_id])
+        ue.secondary_cell = env.candidates[ue.ue_id][0]
+        ue.state = MobilityState.PREPARED
+        ue.protocol_timer = 0
+        mask = env.action_masks()[ue.ue_id]
+        expected = {0, env.commit_action, env.release_action}
+        self.assertEqual(set(np.flatnonzero(mask)), expected)
 
     def test_v2_explicit_flag_is_legacy_equivalent(self) -> None:
         legacy = load_config(ROOT / "configs/default.yaml")
@@ -211,33 +210,35 @@ class V3EnvironmentTest(unittest.TestCase):
         self.assertGreater(len(admitted_sets), 1)
         self.assertTrue(any(admitted != frozenset({0, 1}) for admitted in admitted_sets))
 
-    def test_duplication_can_improve_service_and_costs_extra_resource(self) -> None:
+    def test_prepared_target_reserves_resources_but_carries_no_user_data(self) -> None:
         config = v3_config()
         config["environment"]["num_ues"] = 1
         config["environment"]["num_satellites"] = 3
         config["environment"]["candidate_count"] = 2
-        single = LEOMobilityEnv(deepcopy(config))
-        duplicate = LEOMobilityEnv(deepcopy(config))
-        for env in (single, duplicate):
-            env.reset(seed=41)
-            ue = env.ues[0]
-            primary = int(ue.primary_cell)
-            secondary = next(cell for cell in range(env.num_cells) if cell != primary)
-            ue.secondary_cell = secondary
-            ue.queue.append(PacketBatch(100))
-            for cell, probability in ((primary, 0.0), (secondary, 1.0)):
-                link = env.links[0][cell]
-                link.visible = True
-                link.spectral_efficiency = 3.0
-                link.packet_success_probability = probability
-            ue.state = MobilityState.SINGLE if env is single else MobilityState.DUPLICATING
+        env = LEOMobilityEnv(config)
+        env.reset(seed=41)
+        ue = env.ues[0]
+        primary = int(ue.primary_cell)
+        secondary = next(cell for cell in range(env.num_cells) if cell != primary)
+        ue.secondary_cell = secondary
+        ue.state = MobilityState.PREPARED
+        env.last_preparation_intent_count[secondary] = 1.0
+        ue.queue.append(PacketBatch(100))
+        for cell, probability in ((primary, 0.0), (secondary, 1.0)):
+            link = env.links[0][cell]
+            link.visible = True
+            link.spectral_efficiency = 3.0
+            link.packet_success_probability = probability
         active = np.ones(1, dtype=np.float64)
         required = np.asarray([120_000.0])
-        single_metrics = single._schedule_and_transmit(required, active)
-        duplicate_metrics = duplicate._schedule_and_transmit(required, active)
-        self.assertGreater(duplicate_metrics["delivered_packets"], single_metrics["delivered_packets"])
-        self.assertGreater(duplicate_metrics["duplication_train_cost"], 0.0)
-        self.assertGreater(duplicate.last_utilization.sum(), single.last_utilization.sum())
+        metrics = env._schedule_and_transmit(required, active)
+        rho = float(env.protocol_cfg["preparation_resource_fraction"])
+        self.assertEqual(metrics["delivered_packets"], 0.0)
+        self.assertAlmostEqual(env.last_utilization[secondary], rho)
+        expected_coordination = (
+            env.last_serving_demand + env.last_preparation_demand
+        )
+        np.testing.assert_allclose(env.last_coordination_demand, expected_coordination)
 
     def test_evaluation_action_seed_is_reproducible_and_restores_rng(self) -> None:
         config = v3_config()
@@ -448,7 +449,7 @@ class V3EnvironmentTest(unittest.TestCase):
             low.coordination_costs[ue_id, action],
         )
 
-    def test_v3_dup_on_has_positive_price_scaled_incremental_demand(self) -> None:
+    def test_v3_control_cost_contains_only_preparation_and_handover_terms(self) -> None:
         env, _ = make_reasoning_case()
         ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
         ue = env.ues[ue_id]
@@ -459,27 +460,25 @@ class V3EnvironmentTest(unittest.TestCase):
         reasoner = LookaheadReasoner(
             env.config["reasoning"],
             env.reward_cfg,
-            env.config.get("coordination", {}),
-            use_coordination=True,
         )
-        low_prices = np.zeros(env.num_cells)
-        low_prices[target] = 0.5
-        high_prices = low_prices.copy()
-        high_prices[target] = 2.0
-        low = reasoner.analyze(env, prices=low_prices)
-        high = reasoner.analyze(env, prices=high_prices)
-        self.assertGreater(low.coordination_costs[ue_id, env.dup_on_action], 0.0)
-        self.assertGreater(
-            high.coordination_costs[ue_id, env.dup_on_action],
-            low.coordination_costs[ue_id, env.dup_on_action],
-        )
+        result = reasoner.analyze(env)
+        for action in np.flatnonzero(env.action_masks()[ue_id] > 0.0):
+            expected = (
+                reasoner.eta_preparation
+                * result.predicted_preparation_costs[ue_id, action]
+                + reasoner.eta_handover
+                * result.predicted_handover_costs[ue_id, action]
+            )
+            self.assertAlmostEqual(
+                result.predicted_control_costs[ue_id, action], expected
+            )
 
     def test_v3_all_legal_actions_have_no_negative_coordination_credit(self) -> None:
         env, _ = make_reasoning_case()
         ue_id = next(index for index, candidates in enumerate(env.candidates) if candidates)
         ue = env.ues[ue_id]
         ue.secondary_cell = env.candidates[ue_id][0]
-        ue.state = MobilityState.DUPLICATING
+        ue.state = MobilityState.PREPARED
         ue.protocol_timer = 0
         reasoner = LookaheadReasoner(
             env.config["reasoning"],
@@ -491,10 +490,7 @@ class V3EnvironmentTest(unittest.TestCase):
         legal = env.action_masks()[ue_id] > 0.0
         self.assertTrue(np.all(result.coordination_costs[ue_id, legal] >= -1e-12))
         self.assertAlmostEqual(
-            result.coordination_costs[ue_id, env.dup_off_action], 0.0
-        )
-        self.assertAlmostEqual(
-            result.coordination_costs[ue_id, env.rollback_action], 0.0
+            result.coordination_costs[ue_id, env.release_action], 0.0
         )
 
     def test_v3_commit_prices_only_positive_target_increment(self) -> None:
@@ -654,10 +650,13 @@ class V3EnvironmentTest(unittest.TestCase):
     def test_v3_m5_actor_still_receives_normalized_mu(self) -> None:
         config = load_config(
             ROOT / "configs/default.yaml",
-            [
-                ROOT / "configs/validation_agentic_challenge_v3.yaml",
-                ROOT / "configs/legacy_pdcp/full_agentic.yaml",
-            ],
+            ROOT / "configs/validation_agentic_challenge_v3.yaml",
+        )
+        config["mappo"].update(
+            use_memory=True,
+            use_reasoning=True,
+            use_coordination=True,
+            use_constraint=True,
         )
         env = LEOMobilityEnv(config)
         observations, _, masks = env.reset(seed=909)

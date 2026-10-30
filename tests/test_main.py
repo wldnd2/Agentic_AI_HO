@@ -75,7 +75,7 @@ class MainTest(unittest.TestCase):
                     "team_reward": -1.0,
                     "outage_ratio": 0.2,
                     "deadline_misses": 0.0,
-                    "duplication_train_cost": 0.0,
+                    "preparation_train_cost": 0.0,
                 }
 
             def update_constraint(self):

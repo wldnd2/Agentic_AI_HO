@@ -1,10 +1,12 @@
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from leo_mappo import LEOMobilityEnv, load_config
-from leo_mappo.egcmadqn import VARIANTS, DualVariable, EGCMADQN, EGCTrainer, TrainerConfig
+from leo_mappo import LEOMobilityEnv, MAPPO, load_config
+from leo_mappo.egcmadqn import Components, VARIANTS, DualVariable, EGCMADQN, EGCTrainer, TrainerConfig
+from leo_mappo.twc_wrappers import ComponentEnvWrapper
 
 CFG = Path(__file__).resolve().parents[1] / "configs"
 TWC = [
@@ -84,11 +86,25 @@ def test_mappo_variants_train_and_reload(tmp_path):
              "--outdir", str(out)],
             check=True, cwd=root, env={**__import__("os").environ, "PYTHONPATH": str(root / "src")},
         )
-        sys.path.insert(0, str(legacy_twc))
-        from eval_twc import run_job
-
-        row = run_job((variant, str(out), "nominal", 20, 1, False))
-        assert 0.0 <= row["outage"] <= 1.0
+        run_config = json.loads((out / "run_config.json").read_text(encoding="utf-8"))
+        env = _env(steps=4)
+        components = Components(**run_config["components"])
+        wrapper = ComponentEnvWrapper(env, components)
+        agent = MAPPO(
+            wrapper.obs_dim,
+            env.global_state_dim,
+            env.action_dim,
+            env.config["mappo"],
+            seed=20,
+            num_satellites=env.num_cells,
+            candidate_count=env.candidate_count,
+            eta_handover=float(env.reward_cfg["eta_handover"]),
+        )
+        agent.load(out / "mappo_weights.npz")
+        observations, _, masks = wrapper.reset(seed=20)
+        actions, _ = agent.act(observations, masks, deterministic=True)
+        step = wrapper.step(actions)
+        assert 0.0 <= step.info["outage_ratio"] <= 1.0
 
 
 def test_relabeling_uses_current_multipliers():

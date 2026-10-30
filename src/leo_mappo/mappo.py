@@ -83,7 +83,7 @@ class MAPPO:
         )
         self.outage_dual_mu = 0.0
         self.dual_state_loaded = False
-        self.outcome_dim = 6
+        self.outcome_dim = 5
         self.recurrent_hidden_dim = int(config.get("recurrent_hidden_dim", 128))
         if self.recurrent_hidden_dim <= 0 or int(config.get("bptt_steps", 16)) <= 0:
             raise ValueError("recurrent_hidden_dim and bptt_steps must be positive")
