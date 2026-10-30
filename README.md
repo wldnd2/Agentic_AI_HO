@@ -1,7 +1,7 @@
 # CTDE-MAPPO for PDCP-Duplication-Assisted LEO Mobility
 
 The opt-in partially observable Agentic Challenge V3 scenario is documented in
-[`V3_DESIGN.md`](V3_DESIGN.md) and configured by
+[`V3_DESIGN.md`](archive/legacy_pdcp/docs/V3_DESIGN.md) and configured by
 `configs/validation_agentic_challenge_v3.yaml`. Existing default/V2 scenarios
 remain the strongly observed compatibility benchmark.
 
