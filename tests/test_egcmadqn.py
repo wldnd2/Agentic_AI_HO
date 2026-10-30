@@ -76,14 +76,15 @@ def test_mappo_variants_train_and_reload(tmp_path):
     import sys
 
     root = Path(__file__).resolve().parents[1]
+    legacy_twc = root / "archive" / "legacy_twc" / "experiments"
     for variant in ("mappo", "mappo_c234"):
         out = tmp_path / variant
         subprocess.run(
-            [sys.executable, str(root / "train_twc.py"), "--variant", variant, "--iterations", "2", "--smoke",
+            [sys.executable, str(legacy_twc / "train_twc.py"), "--variant", variant, "--iterations", "2", "--smoke",
              "--outdir", str(out)],
             check=True, cwd=root, env={**__import__("os").environ, "PYTHONPATH": str(root / "src")},
         )
-        sys.path.insert(0, str(root))
+        sys.path.insert(0, str(legacy_twc))
         from eval_twc import run_job
 
         row = run_job((variant, str(out), "nominal", 20, 1, False))

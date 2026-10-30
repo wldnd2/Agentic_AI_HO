@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+LEGACY_TWC = ROOT / "archive" / "legacy_twc" / "experiments"
 ENV = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
 
 
@@ -19,7 +20,7 @@ def _rows(path):
 
 @pytest.mark.parametrize("variant", ["proposed", "mappo_c234"])
 def test_resume_reproduces_uninterrupted_run(tmp_path, variant):
-    base = [sys.executable, str(ROOT / "train_twc.py"), "--variant", variant, "--seed", "7",
+    base = [sys.executable, str(LEGACY_TWC / "train_twc.py"), "--variant", variant, "--seed", "7",
             "--iterations", "6", "--smoke", "--state-every", "2"]
     a, b = tmp_path / "a", tmp_path / "b"
     subprocess.run(base + ["--outdir", str(a)], cwd=ROOT, env=ENV, check=True, capture_output=True)

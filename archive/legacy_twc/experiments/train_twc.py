@@ -32,7 +32,7 @@ MAPPO_VARIANTS = {
     "mappo_c234": Components(guided_exploration=False, potential_shaping=True, dual_constraints=True, price_input=True),
 }
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[3]
 CFG = ROOT / "configs"
 TWC_STACK = [
     CFG / "validation_agentic_challenge_v3.yaml",

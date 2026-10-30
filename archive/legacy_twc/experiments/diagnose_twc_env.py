@@ -16,7 +16,7 @@ import numpy as np
 from leo_mappo import LEOMobilityEnv, load_config
 from leo_mappo.baselines import max_sinr_policy
 
-CFG = Path(__file__).resolve().parents[1] / "configs"
+CFG = Path(__file__).resolve().parents[3] / "configs"
 V3 = [CFG / "validation_agentic_challenge_v3.yaml", CFG / "eta_handover_005.yaml", CFG / "validation_dwell_15.yaml"]
 ENVS = {
     "JSAC V3": [],
