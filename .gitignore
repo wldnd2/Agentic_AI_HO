@@ -40,3 +40,10 @@ resume_state.*
 resume_state.*
 *.partial.jsonl
 .evalprog_*.json
+
+# Local repository inspection files
+repo_inventory.txt
+
+# Generated experiment outputs
+outputs/*
+!outputs/.gitkeep
