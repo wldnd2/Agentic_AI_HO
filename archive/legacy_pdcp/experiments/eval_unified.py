@@ -43,7 +43,7 @@ from statistics import mean, stdev
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[3]
 import sys as _sys
 if str(ROOT) not in _sys.path:
     _sys.path.insert(0, str(ROOT))  # cho_baselines.py lives next to this script

@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[3]
 CFG = ROOT / "configs"
 BASE = CFG / "default.yaml"
 COMMON = [
@@ -56,7 +56,7 @@ def run_dir(model: str, seed: int) -> Path:
 
 
 def build_command(model: str, seed: int, iterations: int) -> list[str]:
-    cmd = [sys.executable, "-u", "main.py", "train", "--config", str(BASE)]
+    cmd = [sys.executable, "-u", str(ROOT / "main.py"), "train", "--config", str(BASE)]
     for path in [*COMMON, *MODEL_OVERRIDES[model]]:
         cmd += ["--override", str(path)]
     cmd += [
