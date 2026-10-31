@@ -81,6 +81,7 @@ class LookaheadReasoner:
         self.discount = self.planner.discount
         self.epsilon = self.planner.epsilon
         self.score_clip = self.planner.score_clip
+        self.planner_objective = self.planner.planner_objective
         self.reliability_risk_temperature = (
             self.world_model.reliability_risk_temperature
         )

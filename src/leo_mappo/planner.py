@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 class ReasoningResult:
     features: np.ndarray
     raw_costs: np.ndarray
+    # Backward-compatible offset-0 diagnostic, not a horizon aggregate.
     predicted_deficits: np.ndarray
     best_scores: np.ndarray
     score_gaps: np.ndarray
@@ -28,6 +29,51 @@ class ReasoningResult:
     service_costs: np.ndarray
     reliability_costs: np.ndarray
     total_costs: np.ndarray
+    delta_service_cost: np.ndarray | None = None
+    delta_reliability_cost: np.ndarray | None = None
+    delta_control_cost: np.ndarray | None = None
+    delta_coordination_cost: np.ndarray | None = None
+    delta_total_cost: np.ndarray | None = None
+
+
+def _counterfactual_cost_deltas(
+    service_costs: np.ndarray,
+    reliability_costs: np.ndarray,
+    control_costs: np.ndarray,
+    coordination_costs: np.ndarray,
+    reference_action: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return component-wise plan costs relative to a reference action."""
+    delta_service = service_costs - service_costs[reference_action]
+    delta_reliability = reliability_costs - reliability_costs[reference_action]
+    delta_control = control_costs - control_costs[reference_action]
+    delta_coordination = coordination_costs - coordination_costs[reference_action]
+    delta_total = (
+        delta_service
+        + delta_reliability
+        + delta_control
+        + delta_coordination
+    )
+    for values in (
+        delta_service,
+        delta_reliability,
+        delta_control,
+        delta_coordination,
+        delta_total,
+    ):
+        values[reference_action] = 0.0
+    return (
+        delta_service,
+        delta_reliability,
+        delta_control,
+        delta_coordination,
+        delta_total,
+    )
+
+
+def _fixed_scale_features(raw_costs: np.ndarray, score_clip: float) -> np.ndarray:
+    """Preserve counterfactual cost scale without action-set normalization."""
+    return np.clip(np.asarray(raw_costs, dtype=np.float64) / score_clip, -1.0, 1.0)
 
 
 @dataclass
@@ -55,8 +101,16 @@ class CHOPlanner:
         self.discount = float(config.get("discount", 0.95))
         self.epsilon = float(config.get("score_epsilon", 1e-8))
         self.score_clip = float(config.get("score_clip", 5.0))
+        self.planner_objective = str(
+            config.get("planner_objective", "legacy")
+        ).lower()
         if self.horizon <= 0 or self.score_clip <= 0.0:
             raise ValueError("reasoning horizon and score_clip must be positive")
+        if self.planner_objective not in ("legacy", "counterfactual"):
+            raise ValueError(
+                "reasoning.planner_objective must be either 'legacy' or "
+                "'counterfactual'"
+            )
         self.lambda_resource = float(reward_config.get("lambda_resource", 0.25))
         self.eta_preparation = float(reward_config.get("eta_preparation", 0.20))
         self.eta_handover = float(reward_config.get("eta_handover", 0.02))
@@ -102,6 +156,24 @@ class CHOPlanner:
         service_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
         reliability_costs = np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
         total_costs = np.full((env.num_agents, env.action_dim), self.score_clip, dtype=np.float64)
+        control_cost_totals = np.zeros(
+            (env.num_agents, env.action_dim), dtype=np.float64
+        )
+        delta_service_cost = np.zeros(
+            (env.num_agents, env.action_dim), dtype=np.float64
+        )
+        delta_reliability_cost = np.zeros(
+            (env.num_agents, env.action_dim), dtype=np.float64
+        )
+        delta_control_cost = np.zeros(
+            (env.num_agents, env.action_dim), dtype=np.float64
+        )
+        delta_coordination_cost = np.zeros(
+            (env.num_agents, env.action_dim), dtype=np.float64
+        )
+        delta_total_cost = np.zeros(
+            (env.num_agents, env.action_dim), dtype=np.float64
+        )
         current_prices = (
             np.zeros(env.num_cells, dtype=np.float64)
             if prices is None
@@ -147,8 +219,12 @@ class CHOPlanner:
                     predicted_control_cost,
                     predicted_handover_cost,
                     predicted_preparation_cost,
+                    control_cost_total,
                 ) = best_evaluation
-                raw_costs[ue.ue_id, action] = float(np.clip(cost, 0.0, self.score_clip))
+                if self.planner_objective == "legacy":
+                    raw_costs[ue.ue_id, action] = float(
+                        np.clip(cost, 0.0, self.score_clip)
+                    )
                 total_costs[ue.ue_id, action] = cost
                 predicted[ue.ue_id, action] = float(np.clip(first_deficit, 0.0, 1.0))
                 service_costs[ue.ue_id, action] = service_cost
@@ -159,14 +235,46 @@ class CHOPlanner:
                 predicted_control_costs[ue.ue_id, action] = predicted_control_cost
                 predicted_handover_costs[ue.ue_id, action] = predicted_handover_cost
                 predicted_preparation_costs[ue.ue_id, action] = predicted_preparation_cost
+                control_cost_totals[ue.ue_id, action] = control_cost_total
             feasible = np.flatnonzero(masks[ue.ue_id] > 0.0)
+            if self.planner_objective == "counterfactual":
+                if 0 not in plans:
+                    raise ValueError(
+                        "counterfactual planner objective requires a feasible STAY action"
+                    )
+                deltas = _counterfactual_cost_deltas(
+                    service_costs[ue.ue_id],
+                    reliability_costs[ue.ue_id],
+                    control_cost_totals[ue.ue_id],
+                    coordination_costs[ue.ue_id],
+                )
+                for destination, values in zip(
+                    (
+                        delta_service_cost,
+                        delta_reliability_cost,
+                        delta_control_cost,
+                        delta_coordination_cost,
+                        delta_total_cost,
+                    ),
+                    deltas,
+                ):
+                    destination[ue.ue_id, feasible] = values[feasible]
+                raw_costs[ue.ue_id, feasible] = np.clip(
+                    delta_total_cost[ue.ue_id, feasible],
+                    -self.score_clip,
+                    self.score_clip,
+                )
             feasible_costs = raw_costs[ue.ue_id, feasible]
             ordered = np.sort(feasible_costs)
             minimum = float(ordered[0])
             maximum = float(ordered[-1])
             best_scores[ue.ue_id] = minimum
             score_gaps[ue.ue_id] = float(ordered[1] - ordered[0]) if len(ordered) > 1 else 0.0
-            if maximum - minimum <= self.epsilon:
+            if self.planner_objective == "counterfactual":
+                features[ue.ue_id, feasible] = _fixed_scale_features(
+                    feasible_costs, self.score_clip
+                )
+            elif maximum - minimum <= self.epsilon:
                 features[ue.ue_id, feasible] = 0.0
             else:
                 features[ue.ue_id, feasible] = np.clip(
@@ -189,6 +297,11 @@ class CHOPlanner:
                 service_costs,
                 reliability_costs,
                 total_costs,
+                delta_service_cost,
+                delta_reliability_cost,
+                delta_control_cost,
+                delta_coordination_cost,
+                delta_total_cost,
             )
         ):
             raise FloatingPointError("reasoner produced a non-finite result")
@@ -207,6 +320,11 @@ class CHOPlanner:
             service_costs,
             reliability_costs,
             total_costs,
+            delta_service_cost,
+            delta_reliability_cost,
+            delta_control_cost,
+            delta_coordination_cost,
+            delta_total_cost,
         )
 
     def _pad(self, actions: list[int], stay: int = 0) -> tuple[int, ...]:
@@ -346,6 +464,7 @@ class CHOPlanner:
         float,
         float,
         float,
+        float,
     ]:
         ue = env.ues[ue_id]
         state = _HypotheticalState(
@@ -475,20 +594,26 @@ class CHOPlanner:
                 env.outage_service_ratio,
             )
             service_step_cost = deficit
-            base_step_cost = (
-                service_step_cost
-                if env.v3_enabled
-                else service_step_cost + self.lambda_resource * control_cost
-            )
-            # V3 M5 deliberately keeps analytical reliability risk diagnostic-only.
-            # Reliability enters production decisions through realized-outage
-            # constrained rewards, recurrent outcomes, and the actor's normalized
-            # mu input. Preserve the historical analytical term for V2 compatibility.
-            reliability_step_cost = (
-                outage_dual_mu * planning_reliability_risk
-                if self.use_constraint and not env.v3_enabled
-                else 0.0
-            )
+            if self.planner_objective == "counterfactual":
+                base_step_cost = service_step_cost + control_cost
+                reliability_step_cost = (
+                    outage_dual_mu * planning_reliability_risk
+                )
+            else:
+                base_step_cost = (
+                    service_step_cost
+                    if env.v3_enabled
+                    else service_step_cost + self.lambda_resource * control_cost
+                )
+                # V3 M5 deliberately keeps analytical reliability risk diagnostic-only.
+                # Reliability enters production decisions through realized-outage
+                # constrained rewards, recurrent outcomes, and the actor's normalized
+                # mu input. Preserve the historical analytical term for V2 compatibility.
+                reliability_step_cost = (
+                    outage_dual_mu * planning_reliability_risk
+                    if self.use_constraint and not env.v3_enabled
+                    else 0.0
+                )
             applied_coordination_cost = (
                 self.reasoning_price_weight * coordination_step
                 if self.use_coordination
@@ -530,4 +655,5 @@ class CHOPlanner:
             float(total_control_cost / diagnostic_scale),
             float(np.clip(total_handover_cost / diagnostic_scale, 0.0, 1.0)),
             float(np.clip(total_preparation_cost / diagnostic_scale, 0.0, 1.0)),
+            float(total_control_cost),
         )
