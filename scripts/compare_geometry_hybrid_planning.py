@@ -53,6 +53,40 @@ def _action_values(values: np.ndarray, feasible: np.ndarray) -> str:
     )
 
 
+def _best_second_margin(
+    values: np.ndarray,
+    ranking: tuple[int, ...],
+) -> tuple[float, float, float]:
+    best = float(values[ranking[0]])
+    second = float(values[ranking[1] if len(ranking) > 1 else ranking[0]])
+    return best, second, second - best
+
+
+def _preferred_target_cell(
+    env: LEOMobilityEnv,
+    ue_id: int,
+    action: int,
+) -> int:
+    if env.prepare_start <= action < env.prepare_start + env.candidate_count:
+        slot = action - env.prepare_start
+        if slot < len(env.candidates[ue_id]):
+            return int(env.candidates[ue_id][slot])
+    return -1
+
+
+def _action_difference_type(
+    geometry_action: int,
+    hybrid_action: int,
+    geometry_category: str,
+    hybrid_category: str,
+) -> str:
+    if geometry_action == hybrid_action:
+        return "identical_exact_action"
+    if geometry_category == hybrid_category:
+        return "same_category_different_exact_action"
+    return "different_action_category"
+
+
 def _preferred_metrics(
     result: ReasoningResult,
     ue_id: int,
@@ -100,6 +134,28 @@ def _decision_rows(
         hybrid_ranking = _ranking(hybrid_result.raw_costs[ue_id], feasible)
         geometry_action = geometry_ranking[0]
         hybrid_action = hybrid_ranking[0]
+        geometry_category = _action_category(env, geometry_action)
+        hybrid_category = _action_category(env, hybrid_action)
+        (
+            geometry_best_cost,
+            geometry_second_best_cost,
+            geometry_decision_margin,
+        ) = _best_second_margin(
+            geometry_result.raw_costs[ue_id], geometry_ranking
+        )
+        (
+            hybrid_best_cost,
+            hybrid_second_best_cost,
+            hybrid_decision_margin,
+        ) = _best_second_margin(
+            hybrid_result.raw_costs[ue_id], hybrid_ranking
+        )
+        geometry_cross_penalty = float(
+            geometry_result.raw_costs[ue_id, hybrid_action] - geometry_best_cost
+        )
+        hybrid_cross_penalty = float(
+            hybrid_result.raw_costs[ue_id, geometry_action] - hybrid_best_cost
+        )
         geometry_metrics = _preferred_metrics(
             geometry_result, ue_id, geometry_action
         )
@@ -113,18 +169,45 @@ def _decision_rows(
                 [int(value > 0.0) for value in masks[ue_id]], separators=(",", ":")
             ),
             "geometry_preferred_action": geometry_action,
-            "geometry_preferred_category": _action_category(env, geometry_action),
+            "geometry_preferred_category": geometry_category,
+            "geometry_preferred_target_cell_id": _preferred_target_cell(
+                env, ue_id, geometry_action
+            ),
             "hybrid_preferred_action": hybrid_action,
-            "hybrid_preferred_category": _action_category(env, hybrid_action),
+            "hybrid_preferred_category": hybrid_category,
+            "hybrid_preferred_target_cell_id": _preferred_target_cell(
+                env, ue_id, hybrid_action
+            ),
             "preferred_action_differs": int(geometry_action != hybrid_action),
+            "action_difference_type": _action_difference_type(
+                geometry_action,
+                hybrid_action,
+                geometry_category,
+                hybrid_category,
+            ),
             "ranking_changed": int(geometry_ranking != hybrid_ranking),
             "geometry_action_ranking": json.dumps(geometry_ranking),
             "hybrid_action_ranking": json.dumps(hybrid_ranking),
             "geometry_score_gap": float(geometry_result.score_gaps[ue_id]),
             "hybrid_score_gap": float(hybrid_result.score_gaps[ue_id]),
+            "feasible_action_count": int(len(feasible)),
+            "geometry_best_cost": geometry_best_cost,
+            "geometry_second_best_cost": geometry_second_best_cost,
+            "geometry_decision_margin": geometry_decision_margin,
+            "hybrid_best_cost": hybrid_best_cost,
+            "hybrid_second_best_cost": hybrid_second_best_cost,
+            "hybrid_decision_margin": hybrid_decision_margin,
+            "geometry_cost_of_hybrid_action_minus_best": geometry_cross_penalty,
+            "hybrid_cost_of_geometry_action_minus_best": hybrid_cross_penalty,
+            "cross_selected_cost_penalty_sum": (
+                geometry_cross_penalty + hybrid_cross_penalty
+            ),
             "history_ready": 0,
             "hybrid_active": 0,
             "history_warmup": 1,
+            "hybrid_active_prediction_count": 0,
+            "mean_abs_sinr_correction_db": 0.0,
+            "max_abs_sinr_correction_db": 0.0,
         }
         for name, value in geometry_metrics.items():
             row[f"geometry_preferred_{name}"] = value
@@ -251,9 +334,31 @@ def compare_current_state(
     }
     for row in decisions:
         ue_id = int(row["ue_id"])
+        ue_predictions = [
+            prediction
+            for prediction in predictions
+            if int(prediction["ue_id"]) == ue_id
+        ]
+        absolute_corrections = np.asarray(
+            [abs(float(prediction["residual_correction_db"])) for prediction in ue_predictions],
+            dtype=np.float64,
+        )
         row["hybrid_active"] = int(active_by_ue[ue_id])
         row["history_ready"] = int(ready_by_ue[ue_id])
         row["history_warmup"] = int(not ready_by_ue[ue_id])
+        row["hybrid_active_prediction_count"] = sum(
+            int(prediction["hybrid_active"]) for prediction in ue_predictions
+        )
+        row["mean_abs_sinr_correction_db"] = (
+            float(np.mean(absolute_corrections))
+            if absolute_corrections.size
+            else 0.0
+        )
+        row["max_abs_sinr_correction_db"] = (
+            float(np.max(absolute_corrections))
+            if absolute_corrections.size
+            else 0.0
+        )
     return decisions, predictions
 
 
@@ -354,6 +459,426 @@ def _plan_cost_metrics(rows: list[dict[str, Any]]) -> dict[str, float]:
             )
         ),
     }
+
+
+def _action_transition_matrix(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    categories = ("STAY", "PREP", "COMMIT", "RELEASE")
+    total = len(rows)
+    matrix: dict[str, Any] = {}
+    for geometry_category in categories:
+        geometry_rows = [
+            row
+            for row in rows
+            if row["geometry_preferred_category"] == geometry_category
+        ]
+        row_total = len(geometry_rows)
+        matrix[geometry_category] = {}
+        for hybrid_category in categories:
+            count = sum(
+                int(row["hybrid_preferred_category"] == hybrid_category)
+                for row in geometry_rows
+            )
+            matrix[geometry_category][hybrid_category] = {
+                "count": count,
+                "fraction": count / total if total else 0.0,
+                "fraction_of_all_decision_points": count / total if total else 0.0,
+                "fraction_within_geometry_category": (
+                    count / row_total if row_total else 0.0
+                ),
+            }
+    return matrix
+
+
+def _exact_action_divergence(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(rows)
+    identical = sum(
+        int(row["action_difference_type"] == "identical_exact_action")
+        for row in rows
+    )
+    same_category_different = sum(
+        int(
+            row["action_difference_type"]
+            == "same_category_different_exact_action"
+        )
+        for row in rows
+    )
+    different_category = sum(
+        int(row["action_difference_type"] == "different_action_category")
+        for row in rows
+    )
+    both_prep = [
+        row
+        for row in rows
+        if row["geometry_preferred_category"] == "PREP"
+        and row["hybrid_preferred_category"] == "PREP"
+    ]
+    different_prep_candidate = sum(
+        int(
+            int(row["geometry_preferred_target_cell_id"])
+            != int(row["hybrid_preferred_target_cell_id"])
+        )
+        for row in both_prep
+    )
+
+    def rate(count: int) -> float:
+        return count / total if total else 0.0
+
+    return {
+        "total_decision_points": total,
+        "identical_exact_action_count": identical,
+        "identical_exact_action_rate": rate(identical),
+        "same_category_different_exact_action_count": same_category_different,
+        "same_category_different_exact_action_rate": rate(same_category_different),
+        "different_action_category_count": different_category,
+        "different_action_category_rate": rate(different_category),
+        "both_prefer_PREP_count": len(both_prep),
+        "same_PREP_category_different_candidate_count": different_prep_candidate,
+        "same_PREP_category_different_candidate_rate": (
+            different_prep_candidate / len(both_prep) if both_prep else 0.0
+        ),
+        "same_PREP_category_different_candidate_fraction_of_all": rate(
+            different_prep_candidate
+        ),
+    }
+
+
+_MARGIN_BINS = (
+    ("<=1e-4", 1e-4),
+    ("(1e-4,1e-3]", 1e-3),
+    ("(1e-3,1e-2]", 1e-2),
+    ("(1e-2,1e-1]", 1e-1),
+    (">1e-1", float("inf")),
+)
+
+
+def _margin_bin(value: float) -> str:
+    margin = max(0.0, float(value))
+    for label, upper_bound in _MARGIN_BINS:
+        if margin <= upper_bound:
+            return label
+    raise RuntimeError("decision margin did not match a fixed bin")
+
+
+def _margin_bins_for_field(
+    rows: list[dict[str, Any]], field: str
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for label, _ in _MARGIN_BINS:
+        selected = [row for row in rows if _margin_bin(float(row[field])) == label]
+        divergent = sum(int(row["preferred_action_differs"]) for row in selected)
+        result[label] = {
+            "count": len(selected),
+            "different_preferred_action": divergent,
+            "divergence_rate": divergent / len(selected) if selected else 0.0,
+        }
+    return result
+
+
+def _decision_margin_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    divergent = [row for row in rows if bool(row["preferred_action_differs"])]
+
+    def mean_field(field: str) -> float:
+        return (
+            float(np.mean([float(row[field]) for row in divergent]))
+            if divergent
+            else 0.0
+        )
+
+    return {
+        "margin_definition": (
+            "second-lowest feasible raw_cost minus lowest feasible raw_cost; "
+            "single-feasible-action points use margin 0"
+        ),
+        "fixed_margin_bins": [label for label, _ in _MARGIN_BINS],
+        "geometry_margin_bins": _margin_bins_for_field(
+            rows, "geometry_decision_margin"
+        ),
+        "hybrid_margin_bins": _margin_bins_for_field(
+            rows, "hybrid_decision_margin"
+        ),
+        "divergent_point_count": len(divergent),
+        "divergent_mean_geometry_decision_margin": mean_field(
+            "geometry_decision_margin"
+        ),
+        "divergent_mean_hybrid_decision_margin": mean_field(
+            "hybrid_decision_margin"
+        ),
+        "divergent_mean_geometry_cross_selected_cost_penalty": mean_field(
+            "geometry_cost_of_hybrid_action_minus_best"
+        ),
+        "divergent_mean_hybrid_cross_selected_cost_penalty": mean_field(
+            "hybrid_cost_of_geometry_action_minus_best"
+        ),
+    }
+
+
+_SERVICE_DEFICIT_TOLERANCE = 1e-12
+
+
+def _distribution(values: list[float]) -> dict[str, float | int]:
+    array = np.asarray(values, dtype=np.float64)
+    if array.size == 0:
+        return {
+            "count": 0,
+            "fraction_exactly_zero": 0.0,
+            "fraction_greater_than_zero": 0.0,
+            "mean": 0.0,
+            "median": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+        }
+    return {
+        "count": int(array.size),
+        "fraction_exactly_zero": float(np.mean(array == 0.0)),
+        "fraction_greater_than_zero": float(np.mean(array > 0.0)),
+        "mean": float(np.mean(array)),
+        "median": float(np.median(array)),
+        "p95": float(np.percentile(array, 95)),
+        "max": float(np.max(array)),
+    }
+
+
+def _service_deficit_subset(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    geometry = [
+        float(row["geometry_preferred_predicted_deficit"]) for row in rows
+    ]
+    hybrid = [float(row["hybrid_preferred_predicted_deficit"]) for row in rows]
+    unequal = sum(
+        int(
+            not np.isclose(
+                geometry_value,
+                hybrid_value,
+                atol=_SERVICE_DEFICIT_TOLERANCE,
+                rtol=1e-9,
+            )
+        )
+        for geometry_value, hybrid_value in zip(geometry, hybrid)
+    )
+    return {
+        "geometry": _distribution(geometry),
+        "hybrid": _distribution(hybrid),
+        "different_service_deficit_count": unequal,
+        "different_service_deficit_rate": unequal / len(rows) if rows else 0.0,
+        "comparison_absolute_tolerance": _SERVICE_DEFICIT_TOLERANCE,
+        "comparison_relative_tolerance": 1e-9,
+    }
+
+
+def _service_deficit_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    post_warmup = [row for row in rows if bool(row["history_ready"])]
+    return {
+        "value_definition": (
+            "predicted_deficits at each reasoner's own preferred feasible action"
+        ),
+        "all_decision_points": _service_deficit_subset(rows),
+        "post_warmup_decision_points": _service_deficit_subset(post_warmup),
+    }
+
+
+def _difference_and_correction_metrics(
+    rows: list[dict[str, Any]],
+) -> dict[str, float | int]:
+    def mean_absolute_difference(geometry_field: str, hybrid_field: str) -> float:
+        return (
+            float(
+                np.mean(
+                    [
+                        abs(float(row[geometry_field]) - float(row[hybrid_field]))
+                        for row in rows
+                    ]
+                )
+            )
+            if rows
+            else 0.0
+        )
+
+    corrections = [float(row["mean_abs_sinr_correction_db"]) for row in rows]
+    maxima = [float(row["max_abs_sinr_correction_db"]) for row in rows]
+    correction_array = np.asarray(corrections, dtype=np.float64)
+    return {
+        "count": len(rows),
+        "mean_absolute_predicted_outage_difference": mean_absolute_difference(
+            "geometry_preferred_predicted_outage",
+            "hybrid_preferred_predicted_outage",
+        ),
+        "mean_absolute_planning_reliability_risk_difference": (
+            mean_absolute_difference(
+                "geometry_preferred_planning_reliability_risk",
+                "hybrid_preferred_planning_reliability_risk",
+            )
+        ),
+        "mean_absolute_total_cost_difference": mean_absolute_difference(
+            "geometry_preferred_total_cost",
+            "hybrid_preferred_total_cost",
+        ),
+        "mean_decision_mean_abs_sinr_correction_db": (
+            float(np.mean(correction_array)) if correction_array.size else 0.0
+        ),
+        "median_decision_mean_abs_sinr_correction_db": (
+            float(np.median(correction_array)) if correction_array.size else 0.0
+        ),
+        "p95_decision_mean_abs_sinr_correction_db": (
+            float(np.percentile(correction_array, 95))
+            if correction_array.size
+            else 0.0
+        ),
+        "mean_decision_max_abs_sinr_correction_db": (
+            float(np.mean(maxima)) if maxima else 0.0
+        ),
+    }
+
+
+def _divergence_vs_agreement(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    divergent = [row for row in rows if bool(row["preferred_action_differs"])]
+    agreeing = [row for row in rows if not bool(row["preferred_action_differs"])]
+    post_warmup_divergent = [row for row in divergent if bool(row["history_ready"])]
+    post_warmup_agreeing = [row for row in agreeing if bool(row["history_ready"])]
+    return {
+        "difference_definition": (
+            "absolute difference between quantities at each reasoner's own "
+            "preferred feasible action"
+        ),
+        "correction_definition": (
+            "distribution of per-decision mean absolute SINR correction across "
+            "already-recorded serving/candidate/horizon prediction rows"
+        ),
+        "all_decision_points": {
+            "divergent": _difference_and_correction_metrics(divergent),
+            "agreeing": _difference_and_correction_metrics(agreeing),
+        },
+        "post_warmup_decision_points": {
+            "divergent": _difference_and_correction_metrics(
+                post_warmup_divergent
+            ),
+            "agreeing": _difference_and_correction_metrics(post_warmup_agreeing),
+        },
+    }
+
+
+def _prep_specific_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    def geometry_prep_outcome(row: dict[str, Any]) -> str:
+        hybrid_category = str(row["hybrid_preferred_category"])
+        if hybrid_category != "PREP":
+            return f"PREP->{hybrid_category}"
+        if (
+            int(row["geometry_preferred_target_cell_id"])
+            == int(row["hybrid_preferred_target_cell_id"])
+        ):
+            return "PREP->PREP_same_candidate"
+        return "PREP->PREP_different_candidate"
+
+    def hybrid_prep_source(row: dict[str, Any]) -> str:
+        geometry_category = str(row["geometry_preferred_category"])
+        if geometry_category != "PREP":
+            return f"{geometry_category}->PREP"
+        if (
+            int(row["geometry_preferred_target_cell_id"])
+            == int(row["hybrid_preferred_target_cell_id"])
+        ):
+            return "PREP_same_candidate->PREP"
+        return "PREP_different_candidate->PREP"
+
+    def counts(selected: list[dict[str, Any]], classifier) -> dict[str, Any]:
+        output: dict[str, Any] = {}
+        for row in selected:
+            label = classifier(row)
+            output.setdefault(label, {"count": 0, "fraction": 0.0})
+            output[label]["count"] += 1
+        for values in output.values():
+            values["fraction"] = values["count"] / len(selected) if selected else 0.0
+        return output
+
+    geometry_prep = [
+        row for row in rows if row["geometry_preferred_category"] == "PREP"
+    ]
+    hybrid_prep = [
+        row for row in rows if row["hybrid_preferred_category"] == "PREP"
+    ]
+    return {
+        "geometry_prefers_PREP_count": len(geometry_prep),
+        "when_geometry_prefers_PREP": counts(
+            geometry_prep, geometry_prep_outcome
+        ),
+        "hybrid_prefers_PREP_count": len(hybrid_prep),
+        "when_hybrid_prefers_PREP": counts(hybrid_prep, hybrid_prep_source),
+    }
+
+
+def build_top_divergence_examples(
+    rows: list[dict[str, Any]], limit: int = 100
+) -> list[dict[str, Any]]:
+    divergent = [row for row in rows if bool(row["preferred_action_differs"])]
+    ordered = sorted(
+        divergent,
+        key=lambda row: (
+            -float(row["cross_selected_cost_penalty_sum"]),
+            -float(row["max_abs_sinr_correction_db"]),
+            int(row["episode"]),
+            int(row["timestep"]),
+            int(row["ue_id"]),
+        ),
+    )
+    examples: list[dict[str, Any]] = []
+    for row in ordered[:limit]:
+        geometry_total = float(row["geometry_preferred_total_cost"])
+        hybrid_total = float(row["hybrid_preferred_total_cost"])
+        geometry_outage = float(row["geometry_preferred_predicted_outage"])
+        hybrid_outage = float(row["hybrid_preferred_predicted_outage"])
+        geometry_risk = float(
+            row["geometry_preferred_planning_reliability_risk"]
+        )
+        hybrid_risk = float(row["hybrid_preferred_planning_reliability_risk"])
+        examples.append(
+            {
+                "episode": row["episode"],
+                "timestep": row["timestep"],
+                "ue_id": row["ue_id"],
+                "protocol_state": row["protocol_state"],
+                "geometry_preferred_action": row["geometry_preferred_action"],
+                "geometry_preferred_category": row[
+                    "geometry_preferred_category"
+                ],
+                "geometry_preferred_target_cell_id": row[
+                    "geometry_preferred_target_cell_id"
+                ],
+                "hybrid_preferred_action": row["hybrid_preferred_action"],
+                "hybrid_preferred_category": row["hybrid_preferred_category"],
+                "hybrid_preferred_target_cell_id": row[
+                    "hybrid_preferred_target_cell_id"
+                ],
+                "action_difference_type": row["action_difference_type"],
+                "geometry_decision_margin": row["geometry_decision_margin"],
+                "hybrid_decision_margin": row["hybrid_decision_margin"],
+                "geometry_cost_of_hybrid_action_minus_best": row[
+                    "geometry_cost_of_hybrid_action_minus_best"
+                ],
+                "hybrid_cost_of_geometry_action_minus_best": row[
+                    "hybrid_cost_of_geometry_action_minus_best"
+                ],
+                "cross_selected_cost_penalty_sum": row[
+                    "cross_selected_cost_penalty_sum"
+                ],
+                "mean_abs_sinr_correction_db": row[
+                    "mean_abs_sinr_correction_db"
+                ],
+                "max_abs_sinr_correction_db": row[
+                    "max_abs_sinr_correction_db"
+                ],
+                "signed_preferred_total_cost_difference": (
+                    hybrid_total - geometry_total
+                ),
+                "absolute_preferred_total_cost_difference": abs(
+                    hybrid_total - geometry_total
+                ),
+                "absolute_preferred_outage_difference": abs(
+                    hybrid_outage - geometry_outage
+                ),
+                "absolute_preferred_reliability_risk_difference": abs(
+                    hybrid_risk - geometry_risk
+                ),
+            }
+        )
+    return examples
 
 
 def build_summary(
@@ -461,6 +986,26 @@ def build_summary(
             "post_warmup_decision_points": _plan_cost_metrics(post_warmup),
             "hybrid_active_decision_points": _plan_cost_metrics(active_decisions),
         },
+        "action_transition_matrix": _action_transition_matrix(decision_rows),
+        "exact_action_divergence": _exact_action_divergence(decision_rows),
+        "decision_margin_analysis": _decision_margin_analysis(decision_rows),
+        "service_deficit_audit": _service_deficit_audit(decision_rows),
+        "divergence_vs_agreement": _divergence_vs_agreement(decision_rows),
+        "prep_specific_analysis": _prep_specific_analysis(decision_rows),
+        "top_divergence_examples": {
+            "maximum_rows": 100,
+            "row_count": min(
+                100,
+                sum(
+                    int(row["preferred_action_differs"])
+                    for row in decision_rows
+                ),
+            ),
+            "sort_criterion": (
+                "descending cross_selected_cost_penalty_sum, then descending "
+                "max_abs_sinr_correction_db"
+            ),
+        },
         "hybrid_world_model_diagnostics": dict(diagnostics),
     }
 
@@ -486,6 +1031,10 @@ def write_outputs(
     destination.mkdir(parents=True, exist_ok=True)
     _write_csv(destination / "decision_comparison.csv", decision_rows)
     _write_csv(destination / "prediction_comparison.csv", prediction_rows)
+    _write_csv(
+        destination / "top_divergence_examples.csv",
+        build_top_divergence_examples(decision_rows),
+    )
     with (destination / "summary.json").open("w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
 
