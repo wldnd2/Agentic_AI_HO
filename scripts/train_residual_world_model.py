@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 
@@ -19,6 +21,52 @@ from leo_mappo.residual_world_model import (
     VISIBILITY_SCALE_S,
     ResidualLinkPredictor,
 )
+
+
+class _CheckpointSavable(Protocol):
+    def save(self, path: str | Path) -> None: ...
+
+
+@dataclass
+class ValidationCheckpointState:
+    patience: int = 0
+    best_validation_mse: float = float("inf")
+    best_epoch: int = 0
+    non_improving_epochs: int = 0
+
+    def __post_init__(self) -> None:
+        if self.patience < 0:
+            raise ValueError("early-stopping patience must be non-negative")
+
+    def update(self, epoch: int, validation_mse: float) -> tuple[bool, bool]:
+        if epoch <= 0:
+            raise ValueError("epoch must be positive")
+        if not np.isfinite(validation_mse):
+            raise ValueError("validation MSE must be finite")
+        improved = validation_mse < self.best_validation_mse
+        if improved:
+            self.best_validation_mse = float(validation_mse)
+            self.best_epoch = int(epoch)
+            self.non_improving_epochs = 0
+        else:
+            self.non_improving_epochs += 1
+        should_stop = (
+            self.patience > 0 and self.non_improving_epochs >= self.patience
+        )
+        return improved, should_stop
+
+
+def _update_best_checkpoint(
+    state: ValidationCheckpointState,
+    model: _CheckpointSavable,
+    checkpoint_path: Path,
+    epoch: int,
+    validation_mse: float,
+) -> bool:
+    improved, should_stop = state.update(epoch, validation_mse)
+    if improved:
+        model.save(checkpoint_path)
+    return should_stop
 
 
 def _masked_mean(values: np.ndarray, masks: np.ndarray) -> float:
@@ -44,6 +92,8 @@ def _validation_metrics(
 def train(args: argparse.Namespace) -> None:
     if args.epochs <= 0 or args.batch_size <= 0 or args.hidden_dim <= 0:
         raise ValueError("epochs, batch size, and hidden dimension must be positive")
+    patience = int(getattr(args, "early_stopping_patience", 0))
+    checkpoint_state = ValidationCheckpointState(patience=patience)
     train_data = PredictionDataset.load(args.train)
     validation_data = PredictionDataset.load(args.validation)
     train_shape = (
@@ -75,6 +125,10 @@ def train(args: argparse.Namespace) -> None:
     )
     rng = np.random.default_rng(args.seed)
     metrics: list[dict[str, float | int]] = []
+    output = Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = output / "model.npz"
+    stopping_epoch: int | None = None
     for epoch in range(1, args.epochs + 1):
         order = rng.permutation(train_data.sample_count)
         weighted_loss = 0.0
@@ -103,15 +157,22 @@ def train(args: argparse.Namespace) -> None:
             "validation_hybrid_sinr_mae": validation_hybrid_mae,
         }
         metrics.append(row)
+        should_stop = _update_best_checkpoint(
+            checkpoint_state,
+            model,
+            checkpoint_path,
+            epoch,
+            validation_mse,
+        )
         print(
             f"epoch={epoch:04d} train_mse={train_masked_mse:.6f} "
             f"validation_mse={validation_mse:.6f} "
             f"validation_hybrid_mae={validation_hybrid_mae:.6f}"
         )
+        if should_stop:
+            stopping_epoch = epoch
+            break
 
-    output = Path(args.output)
-    output.mkdir(parents=True, exist_ok=True)
-    model.save(output / "model.npz")
     model_config = {
         "architecture": "GRU final hidden state -> tanh MLP -> residual SINR horizons",
         "feature_dim": model.feature_dim,
@@ -123,6 +184,8 @@ def train(args: argparse.Namespace) -> None:
         "learning_rate": model.learning_rate,
         "max_grad_norm": model.max_grad_norm,
         "seed": model.seed,
+        "best_epoch": checkpoint_state.best_epoch,
+        "best_validation_mse": checkpoint_state.best_validation_mse,
         "normalization": {
             "measured_sinr": f"0 if unavailable, else clip((dB + {SINR_OFFSET_DB}) / {SINR_SCALE_DB}, 0, 1)",
             "observed_load": f"clip(load / {LOAD_SCALE}, 0, 1.5)",
@@ -140,6 +203,14 @@ def train(args: argparse.Namespace) -> None:
         writer = csv.DictWriter(handle, fieldnames=list(metrics[0]))
         writer.writeheader()
         writer.writerows(metrics)
+    stopping_message = (
+        f" stopping_epoch={stopping_epoch}" if stopping_epoch is not None else ""
+    )
+    print(
+        f"best_epoch={checkpoint_state.best_epoch} "
+        f"best_validation_mse={checkpoint_state.best_validation_mse:.6f}"
+        f"{stopping_message}"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -152,6 +223,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--hidden-dim", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=0,
+        help="Stop after this many consecutive non-improving epochs; 0 disables.",
+    )
     return parser.parse_args()
 
 
