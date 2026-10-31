@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
@@ -122,6 +123,18 @@ FutureLinkPredictor = Callable[
 ]
 
 
+@dataclass(frozen=True)
+class GeometryLinkPrediction:
+    """Deterministic future-link prediction from information available now."""
+
+    visible: bool
+    elevation_rad: float
+    distance_m: float
+    sinr_db: float
+    spectral_efficiency: float
+    success_probability: float
+
+
 class GeometryWorldModel:
     """Current deterministic geometry, link, service, and reliability model."""
 
@@ -150,11 +163,29 @@ class GeometryWorldModel:
     ) -> tuple[float, float]:
         if cell_id is None:
             return 0.0, 0.0
+        prediction = self.predict_link(env, ue_id, cell_id, offset)
+        return prediction.spectral_efficiency, prediction.success_probability
+
+    def predict_link(
+        self,
+        env: LEOMobilityEnv,
+        ue_id: int,
+        cell_id: int,
+        offset: int,
+    ) -> GeometryLinkPrediction:
+        """Expose the existing geometry/link forecast without changing its math."""
         elevation, future_distance = self.future_elevation_and_distance(
             env, ue_id, cell_id, offset
         )
         if elevation < env.min_elevation_rad:
-            return 0.0, 0.0
+            return GeometryLinkPrediction(
+                visible=False,
+                elevation_rad=float(elevation),
+                distance_m=float(future_distance),
+                sinr_db=0.0,
+                spectral_efficiency=0.0,
+                success_probability=0.0,
+            )
         current = env.links[ue_id][cell_id]
         loss_delta = 20.0 * np.log10(
             future_distance / (current.distance_m + self.epsilon)
@@ -171,7 +202,14 @@ class GeometryWorldModel:
         success = 1.0 / (
             1.0 + np.exp(np.clip(-0.75 * (sinr_db + 2.0), -40.0, 40.0))
         )
-        return float(efficiency), float(success)
+        return GeometryLinkPrediction(
+            visible=True,
+            elevation_rad=float(elevation),
+            distance_m=float(future_distance),
+            sinr_db=float(sinr_db),
+            spectral_efficiency=float(efficiency),
+            success_probability=float(success),
+        )
 
     def predicted_leg(
         self,
