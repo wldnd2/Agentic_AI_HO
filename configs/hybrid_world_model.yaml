@@ -1,0 +1,3 @@
+reasoning:
+  world_model: hybrid
+  residual_model_path: outputs/world_model/model_best/model.npz

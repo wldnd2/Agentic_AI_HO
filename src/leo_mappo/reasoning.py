@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .hybrid_world_model import HybridWorldModel
 from .planner import CHOPlanner, ReasoningResult
 from .world_model import (
     GeometryWorldModel,
@@ -17,7 +19,7 @@ if TYPE_CHECKING:
 
 
 class LookaheadReasoner:
-    """Backward-compatible facade for deterministic world-model CHO planning."""
+    """Backward-compatible facade for configured world-model CHO planning."""
 
     def __init__(
         self,
@@ -37,10 +39,34 @@ class LookaheadReasoner:
         if reliability_risk_temperature <= 0.0:
             raise ValueError("reasoning reliability_risk_temperature must be positive")
 
-        self.world_model = GeometryWorldModel(
+        geometry_model = GeometryWorldModel(
             epsilon=float(config.get("score_epsilon", 1e-8)),
             reliability_risk_temperature=reliability_risk_temperature,
         )
+        world_model_mode = str(config.get("world_model", "geometry")).lower()
+        if world_model_mode == "geometry":
+            self.world_model = geometry_model
+        elif world_model_mode == "hybrid":
+            configured_path = config.get("residual_model_path")
+            if not configured_path:
+                raise ValueError(
+                    "reasoning.residual_model_path is required when "
+                    "reasoning.world_model=hybrid"
+                )
+            checkpoint_path = Path(configured_path).expanduser()
+            if not checkpoint_path.is_file():
+                raise FileNotFoundError(
+                    "hybrid residual model checkpoint does not exist: "
+                    f"{checkpoint_path}"
+                )
+            self.world_model = HybridWorldModel.from_checkpoint(
+                geometry_model,
+                checkpoint_path,
+            )
+        else:
+            raise ValueError(
+                "reasoning.world_model must be either 'geometry' or 'hybrid'"
+            )
         self.planner = CHOPlanner(
             config,
             reward_config,
@@ -73,6 +99,7 @@ class LookaheadReasoner:
         outage_dual_mu: float = 0.0,
     ) -> ReasoningResult:
         # Keep historical monkey-patching seams while delegating all work.
+        self.world_model.observe(env)
         self.world_model.outage_probability_fn = _predicted_outage_probability
         self.world_model.reliability_risk_fn = _planning_reliability_risk
         self.world_model.goodputs_fn = _predicted_goodputs

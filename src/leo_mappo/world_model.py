@@ -158,6 +158,25 @@ class GeometryWorldModel:
             env.satellites[cell_id].position_ecef(future_time),
         )
 
+    def observe(self, env: LEOMobilityEnv) -> None:
+        """Accept the common world-model observation hook without state."""
+
+    def link_quality_from_sinr(
+        self,
+        env: LEOMobilityEnv,
+        sinr_db: float,
+    ) -> tuple[float, float]:
+        """Apply the existing spectral-efficiency and success formulas."""
+        sinr_linear = 10.0 ** (np.clip(sinr_db, -120.0, 80.0) / 10.0)
+        efficiency = min(
+            float(env.channel_cfg["spectral_efficiency_cap"]),
+            0.75 * np.log2(1.0 + sinr_linear),
+        )
+        success = 1.0 / (
+            1.0 + np.exp(np.clip(-0.75 * (sinr_db + 2.0), -40.0, 40.0))
+        )
+        return float(efficiency), float(success)
+
     def future_link(
         self, env: LEOMobilityEnv, ue_id: int, cell_id: int | None, offset: int
     ) -> tuple[float, float]:
@@ -194,14 +213,7 @@ class GeometryWorldModel:
             env.observed_sinr[ue_id, cell_id] if env.v3_enabled else current.sinr_db
         )
         sinr_db = current_sinr - loss_delta
-        sinr_linear = 10.0 ** (np.clip(sinr_db, -120.0, 80.0) / 10.0)
-        efficiency = min(
-            float(env.channel_cfg["spectral_efficiency_cap"]),
-            0.75 * np.log2(1.0 + sinr_linear),
-        )
-        success = 1.0 / (
-            1.0 + np.exp(np.clip(-0.75 * (sinr_db + 2.0), -40.0, 40.0))
-        )
+        efficiency, success = self.link_quality_from_sinr(env, sinr_db)
         return GeometryLinkPrediction(
             visible=True,
             elevation_rad=float(elevation),
