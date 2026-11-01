@@ -45,6 +45,18 @@ def _clipped_by_demand(
     )
 
 
+def _diagnostic_remaining_service_window(
+    deadline_s: float,
+    head_of_line_delay_s: float,
+    interval_s: float,
+) -> float:
+    if interval_s <= 0.0:
+        raise ValueError("interval_s must be positive")
+    return float(
+        max(deadline_s - head_of_line_delay_s + interval_s, interval_s)
+    )
+
+
 def _deadline_aware_diagnostic_required_rate(
     ue: Any,
     interval_s: float,
@@ -56,11 +68,12 @@ def _deadline_aware_diagnostic_required_rate(
     if queue_bits <= 0.0:
         return 0.0
     arrival_rate = float(ue.mean_arrival_mbps) * 1e6
-    remaining_deadline = max(
-        float(ue.deadline_s) - float(ue.head_of_line_delay_s),
+    remaining_service_window = _diagnostic_remaining_service_window(
+        float(ue.deadline_s),
+        float(ue.head_of_line_delay_s),
         interval_s,
     )
-    deadline_rate = queue_bits / remaining_deadline
+    deadline_rate = queue_bits / remaining_service_window
     queue_one_step_cap = queue_bits / interval_s
     return float(
         min(queue_one_step_cap, max(arrival_rate, deadline_rate))

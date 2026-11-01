@@ -19,6 +19,7 @@ from scripts.compare_geometry_hybrid_planning import (
     _classify_selected_continuation,
     _clipped_by_demand,
     _deadline_aware_diagnostic_required_rate,
+    _diagnostic_remaining_service_window,
     _divergence_vs_agreement,
     _exact_action_divergence,
     _geometry_service_decision_diagnostics,
@@ -224,8 +225,29 @@ def test_deadline_aware_diagnostic_demand_is_zero_for_empty_queue() -> None:
 
 def test_deadline_aware_diagnostic_demand_formula() -> None:
     ue = _diagnostic_ue()
-    # queue_bits=8e6, remaining_deadline=0.5, arrival=1e6, cap=80e6
-    assert _deadline_aware_diagnostic_required_rate(ue, 0.1) == 16e6
+    # queue_bits=8e6, service_window=0.6, arrival=1e6, cap=80e6
+    assert np.isclose(
+        _deadline_aware_diagnostic_required_rate(ue, 0.1),
+        8e6 / 0.6,
+    )
+
+
+def test_remaining_service_window_at_deadline_is_one_interval() -> None:
+    assert _diagnostic_remaining_service_window(1.0, 1.0, 0.1) == 0.1
+
+
+def test_window_one_interval_before_deadline_is_two_intervals() -> None:
+    assert np.isclose(
+        _diagnostic_remaining_service_window(1.0, 0.9, 0.1),
+        0.2,
+    )
+
+
+def test_remaining_service_window_at_zero_age_includes_next_interval() -> None:
+    assert np.isclose(
+        _diagnostic_remaining_service_window(1.0, 0.0, 0.1),
+        1.1,
+    )
 
 
 def test_deadline_aware_demand_increases_as_remaining_deadline_shrinks() -> None:
