@@ -14,6 +14,7 @@ from leo_mappo.coordinator import (
     ReliabilityDualController,
     SatellitePriceCoordinator,
 )
+from leo_mappo.demand import DEADLINE_AWARE, compute_required_rate_bps
 from leo_mappo.environment import LEOMobilityEnv, StepOutput
 from leo_mappo.hybrid_world_model import HybridWorldModel
 from leo_mappo.planner import ReasoningResult
@@ -45,38 +46,20 @@ def _clipped_by_demand(
     )
 
 
-def _diagnostic_remaining_service_window(
-    deadline_s: float,
-    head_of_line_delay_s: float,
-    interval_s: float,
-) -> float:
-    if interval_s <= 0.0:
-        raise ValueError("interval_s must be positive")
-    return float(
-        max(deadline_s - head_of_line_delay_s + interval_s, interval_s)
-    )
-
-
 def _deadline_aware_diagnostic_required_rate(
     ue: Any,
     interval_s: float,
 ) -> float:
-    """Compute a current-state-only QoS demand without changing the simulator."""
-    if interval_s <= 0.0:
-        raise ValueError("interval_s must be positive")
-    queue_bits = float(ue.queue_packets * ue.packet_size_bits)
-    if queue_bits <= 0.0:
-        return 0.0
-    arrival_rate = float(ue.mean_arrival_mbps) * 1e6
-    remaining_service_window = _diagnostic_remaining_service_window(
-        float(ue.deadline_s),
-        float(ue.head_of_line_delay_s),
-        interval_s,
-    )
-    deadline_rate = queue_bits / remaining_service_window
-    queue_one_step_cap = queue_bits / interval_s
-    return float(
-        min(queue_one_step_cap, max(arrival_rate, deadline_rate))
+    """Compute actor-consistent deadline-aware demand for diagnostics only."""
+    return compute_required_rate_bps(
+        model=DEADLINE_AWARE,
+        queue_packets=ue.queue_packets,
+        packet_size_bits=ue.packet_size_bits,
+        interval_s=interval_s,
+        mean_arrival_mbps=ue.mean_arrival_mbps,
+        traffic_multiplier=1.0,
+        deadline_s=ue.deadline_s,
+        head_of_line_delay_s=ue.head_of_line_delay_s,
     )
 
 

@@ -9,6 +9,7 @@ import numpy as np
 
 from .channel import ChannelModel, LinkResult
 from .coordinator import compute_training_reward
+from .demand import compute_required_rate_bps, normalize_required_rate_model
 from .events import EventGenerator
 from .satellite import (
     SatelliteCell,
@@ -58,6 +59,9 @@ class LEOMobilityEnv:
         self.sat_cfg = config["satellite"]
         self.channel_cfg = config["channel"]
         self.traffic_cfg = config["traffic"]
+        self.required_rate_model = normalize_required_rate_model(
+            self.traffic_cfg.get("required_rate_model")
+        )
         self.protocol_cfg = config["protocol"]
         self.qos_cfg = {"outage_service_ratio": 0.80, **config.get("qos", {})}
         self.scheduler_cfg = {
@@ -819,14 +823,35 @@ class LEOMobilityEnv:
                 reservation[ue.secondary_cell] += rho
         return reservation
 
-    def _compute_required_rates(self, traffic_multiplier: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        queue_packets = np.asarray([ue.queue_packets for ue in self.ues], dtype=np.float64)
-        queue_limited = queue_packets * int(self.traffic_cfg["packet_size_bits"]) / max(self.interval_s, 1e-8)
-        traffic_rate = np.asarray(
-            [ue.mean_arrival_mbps * 1e6 for ue in self.ues], dtype=np.float64
-        ) * np.asarray(traffic_multiplier, dtype=np.float64)
+    def _compute_required_rates(
+        self,
+        traffic_multiplier: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        queue_packets = np.asarray(
+            [ue.queue_packets for ue in self.ues], dtype=np.float64
+        )
+        multipliers = np.broadcast_to(
+            np.asarray(traffic_multiplier, dtype=np.float64),
+            (self.num_agents,),
+        )
         active = queue_packets > 0.0
-        return active.astype(np.float64), np.where(active, np.minimum(traffic_rate, queue_limited), 0.0)
+        required_rates = np.asarray(
+            [
+                compute_required_rate_bps(
+                    model=self.required_rate_model,
+                    queue_packets=ue.queue_packets,
+                    packet_size_bits=ue.packet_size_bits,
+                    interval_s=self.interval_s,
+                    mean_arrival_mbps=ue.mean_arrival_mbps,
+                    traffic_multiplier=float(multipliers[ue.ue_id]),
+                    deadline_s=ue.deadline_s,
+                    head_of_line_delay_s=ue.head_of_line_delay_s,
+                )
+                for ue in self.ues
+            ],
+            dtype=np.float64,
+        )
+        return active.astype(np.float64), required_rates
 
     def _schedule_and_transmit(self, required_rates: np.ndarray, active: np.ndarray) -> dict[str, float]:
         requests: list[LegRequest] = []
@@ -1167,8 +1192,8 @@ class LEOMobilityEnv:
     def observed_required_rates(self) -> tuple[np.ndarray, np.ndarray]:
         """Actor-consistent demand estimate for V3 analytical reasoning.
 
-        Queue occupancy and each UE's configured mean arrival rate are actor
-        inputs. Hidden traffic-event multipliers remain physical-only.
+        Queue occupancy, HOL delay, and each UE's configured mean arrival rate
+        are actor inputs. Hidden traffic-event multipliers remain physical-only.
         """
         if not self.v3_enabled:
             return self.current_required_rates()

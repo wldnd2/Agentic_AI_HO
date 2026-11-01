@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from leo_mappo import LEOMobilityEnv, load_config
+from leo_mappo.demand import remaining_service_window_s
 from leo_mappo.hybrid_world_model import HybridWorldModel
 from leo_mappo.reasoning import LookaheadReasoner
 from leo_mappo.residual_world_model import FEATURE_DIM
@@ -19,7 +20,6 @@ from scripts.compare_geometry_hybrid_planning import (
     _classify_selected_continuation,
     _clipped_by_demand,
     _deadline_aware_diagnostic_required_rate,
-    _diagnostic_remaining_service_window,
     _divergence_vs_agreement,
     _exact_action_divergence,
     _geometry_service_decision_diagnostics,
@@ -233,19 +233,31 @@ def test_deadline_aware_diagnostic_demand_formula() -> None:
 
 
 def test_remaining_service_window_at_deadline_is_one_interval() -> None:
-    assert _diagnostic_remaining_service_window(1.0, 1.0, 0.1) == 0.1
+    assert remaining_service_window_s(
+        deadline_s=1.0,
+        head_of_line_delay_s=1.0,
+        interval_s=0.1,
+    ) == 0.1
 
 
 def test_window_one_interval_before_deadline_is_two_intervals() -> None:
     assert np.isclose(
-        _diagnostic_remaining_service_window(1.0, 0.9, 0.1),
+        remaining_service_window_s(
+            deadline_s=1.0,
+            head_of_line_delay_s=0.9,
+            interval_s=0.1,
+        ),
         0.2,
     )
 
 
 def test_remaining_service_window_at_zero_age_includes_next_interval() -> None:
     assert np.isclose(
-        _diagnostic_remaining_service_window(1.0, 0.0, 0.1),
+        remaining_service_window_s(
+            deadline_s=1.0,
+            head_of_line_delay_s=0.0,
+            interval_s=0.1,
+        ),
         1.1,
     )
 
