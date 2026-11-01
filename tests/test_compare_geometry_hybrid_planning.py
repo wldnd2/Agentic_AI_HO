@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from leo_mappo import LEOMobilityEnv, load_config
 from leo_mappo.hybrid_world_model import HybridWorldModel
@@ -14,13 +16,19 @@ from scripts.compare_geometry_hybrid_planning import (
     _action_difference_type,
     _action_transition_matrix,
     _best_second_margin,
+    _classify_selected_continuation,
     _divergence_vs_agreement,
     _exact_action_divergence,
+    _immediate_prep_delay_analysis,
+    _prepared_release_analysis,
     _ranking,
+    _resolve_shared_outage_dual,
+    _selected_continuation_analysis,
     _service_deficit_audit,
     build_summary,
     compare_current_state,
     inspect_then_step,
+    parse_args,
     write_outputs,
 )
 
@@ -70,6 +78,24 @@ def _summary_row(**overrides):
         "hybrid_feasible_planning_reliability_risks": '{"0":0.0}',
         "geometry_feasible_coordination_costs": '{"0":0.0}',
         "hybrid_feasible_coordination_costs": '{"0":0.0}',
+        "geometry_selected_continuation": "pure_stay",
+        "hybrid_selected_continuation": "pure_stay",
+        "geometry_best_immediate_prep_cost": None,
+        "hybrid_best_immediate_prep_cost": None,
+        "geometry_selected_stay_cost": None,
+        "hybrid_selected_stay_cost": None,
+        "geometry_selected_stay_contains_delayed_prep": 0,
+        "hybrid_selected_stay_contains_delayed_prep": 0,
+        "geometry_immediate_prep_minus_stay_cost": None,
+        "hybrid_immediate_prep_minus_stay_cost": None,
+        "geometry_stay_reference_cost": None,
+        "hybrid_stay_reference_cost": None,
+        "geometry_release_cost": None,
+        "hybrid_release_cost": None,
+        "geometry_selected_release_contains_reprep": 0,
+        "hybrid_selected_release_contains_reprep": 0,
+        "geometry_selected_stay_contains_future_commit": 0,
+        "hybrid_selected_stay_contains_future_commit": 0,
     }
     row.update(overrides)
     return row
@@ -164,6 +190,169 @@ def test_behavior_action_is_independent_of_reasoner_recommendations() -> None:
     assert stepped_actions == [2, 2]
 
 
+def test_selected_continuation_classification_rules() -> None:
+    env = _env()
+    stay = 0
+    prep = env.prepare_start
+    commit = env.commit_action
+    release = env.release_action
+    cases = (
+        ("SINGLE", stay, (stay,) * 6, "pure_stay"),
+        (
+            "SINGLE",
+            stay,
+            (stay, prep, stay, commit, stay, stay),
+            "stay_then_delayed_prep_commit",
+        ),
+        (
+            "SINGLE",
+            prep,
+            (prep, release, stay, stay, stay, stay),
+            "prep_then_release",
+        ),
+        (
+            "PREPARED",
+            stay,
+            (stay, commit, stay, stay, stay, stay),
+            "stay_then_future_commit",
+        ),
+        (
+            "PREPARED",
+            release,
+            (release, prep, stay, commit, stay, stay),
+            "release_then_reprep_commit",
+        ),
+    )
+    for state, immediate_action, sequence, expected in cases:
+        continuation, categories = _classify_selected_continuation(
+            env, state, immediate_action, sequence
+        )
+        assert continuation == expected
+        assert len(categories) == len(sequence)
+
+
+def test_selected_continuation_summary_is_split_by_reasoner_and_state() -> None:
+    rows = [
+        _summary_row(
+            geometry_selected_continuation="pure_stay",
+            hybrid_selected_continuation="stay_then_delayed_prep_commit",
+        ),
+        _summary_row(
+            protocol_state="PREPARED",
+            geometry_preferred_category="RELEASE",
+            hybrid_preferred_category="RELEASE",
+            geometry_selected_continuation="pure_release",
+            hybrid_selected_continuation="release_then_reprep_commit",
+        ),
+    ]
+    analysis = _selected_continuation_analysis(rows)
+    assert analysis["geometry"]["SINGLE"]["classes"]["pure_stay"]["count"] == 1
+    assert (
+        analysis["hybrid"]["SINGLE"]["classes"]
+        ["stay_then_delayed_prep_commit"]["fraction_within_state"]
+        == 1.0
+    )
+    release_class = analysis["hybrid"]["PREPARED"]["classes"][
+        "release_then_reprep_commit"
+    ]
+    assert release_class["count"] == 1
+    assert release_class["by_preferred_immediate_action_category"]["RELEASE"][
+        "fraction_within_preferred_immediate_action_category"
+    ] == 1.0
+
+
+def test_immediate_prep_and_prepared_release_analyses() -> None:
+    single = _summary_row(
+        geometry_best_immediate_prep_cost=0.3,
+        geometry_selected_stay_cost=0.2,
+        geometry_selected_stay_contains_delayed_prep=1,
+        geometry_immediate_prep_minus_stay_cost=0.1,
+        hybrid_best_immediate_prep_cost=0.1,
+        hybrid_selected_stay_cost=0.2,
+        hybrid_selected_stay_contains_delayed_prep=0,
+        hybrid_immediate_prep_minus_stay_cost=-0.1,
+    )
+    prepared = _summary_row(
+        protocol_state="PREPARED",
+        geometry_stay_reference_cost=0.3,
+        geometry_release_cost=0.2,
+        geometry_selected_release_contains_reprep=0,
+        geometry_selected_stay_contains_future_commit=1,
+        hybrid_stay_reference_cost=0.3,
+        hybrid_release_cost=0.4,
+        hybrid_selected_release_contains_reprep=1,
+        hybrid_selected_stay_contains_future_commit=0,
+    )
+    prep_analysis = _immediate_prep_delay_analysis([single, prepared])
+    assert prep_analysis["geometry"]["selected_stay_delayed_prep_count"] == 1
+    assert prep_analysis["geometry"][
+        "best_immediate_prep_minus_selected_stay_cost"
+    ]["mean"] == 0.1
+    assert prep_analysis["hybrid"][
+        "best_immediate_prep_minus_selected_stay_cost"
+    ]["fraction_negative"] == 1.0
+
+    release_analysis = _prepared_release_analysis([single, prepared])
+    assert release_analysis["geometry"]["selected_stay_future_commit_count"] == 1
+    assert release_analysis["hybrid"]["selected_release_reprep_count"] == 1
+    assert release_analysis["geometry"]["release_minus_stay_cost"]["mean"] < 0.0
+
+
+def test_fixed_outage_dual_override_and_default_resolution() -> None:
+    controller = SimpleNamespace(mu=0.4, mu_max=10.0)
+    assert _resolve_shared_outage_dual(None, controller, False) == (
+        0.0,
+        "config/default",
+    )
+    assert _resolve_shared_outage_dual(None, controller, True) == (
+        0.4,
+        "config/default",
+    )
+    assert _resolve_shared_outage_dual(2.5, controller, False) == (
+        2.5,
+        "cli_fixed_override",
+    )
+    with pytest.raises(ValueError, match="configured mu_max"):
+        _resolve_shared_outage_dual(10.1, controller, True)
+    with pytest.raises(ValueError, match="configured mu_max"):
+        _resolve_shared_outage_dual(-0.1, controller, True)
+
+
+def test_outage_dual_cli_option_is_optional_and_accepts_fixed_value() -> None:
+    required = [
+        "compare_geometry_hybrid_planning.py",
+        "--residual-model",
+        "model.npz",
+        "--output",
+        "diagnostic-output",
+    ]
+    with patch("sys.argv", required):
+        assert parse_args().outage_dual_mu is None
+    with patch("sys.argv", [*required, "--outage-dual-mu", "1.25"]):
+        assert parse_args().outage_dual_mu == 1.25
+
+
+def test_same_outage_dual_is_supplied_to_both_reasoners() -> None:
+    env = _env()
+    geometry, hybrid = _reasoners(
+        env, _FakeResidualPredictor([0.0, 0.0], history_steps=1)
+    )
+    shared_dual = 1.75
+    with patch.object(geometry, "analyze", wraps=geometry.analyze) as geometry_analyze:
+        with patch.object(hybrid, "analyze", wraps=hybrid.analyze) as hybrid_analyze:
+            compare_current_state(
+                env,
+                geometry,
+                hybrid,
+                episode=0,
+                timestep=0,
+                prices=np.zeros(env.num_cells),
+                outage_dual_mu=shared_dual,
+            )
+    assert geometry_analyze.call_args.args[3] == shared_dual
+    assert hybrid_analyze.call_args.args[3] == shared_dual
+
+
 def test_zero_residual_has_equivalent_decisions_and_predictions() -> None:
     env = _env()
     geometry, hybrid = _reasoners(
@@ -180,6 +369,12 @@ def test_zero_residual_has_equivalent_decisions_and_predictions() -> None:
     )
     assert all(row["preferred_action_differs"] == 0 for row in decisions)
     assert all(row["ranking_changed"] == 0 for row in decisions)
+    assert all(row["geometry_selected_continuation"] for row in decisions)
+    assert all(row["hybrid_selected_continuation"] for row in decisions)
+    assert all(row["geometry_selected_sequence"] for row in decisions)
+    assert all(row["hybrid_selected_sequence"] for row in decisions)
+    assert all(row["geometry_feasible_selected_continuations"] for row in decisions)
+    assert all(row["hybrid_feasible_selected_continuations"] for row in decisions)
     assert all(row["residual_correction_db"] == 0.0 for row in predictions)
     assert all(row["hybrid_active"] == 1 for row in predictions)
 
@@ -361,3 +556,8 @@ def test_tiny_diagnostic_records_write_csv_and_json(tmp_path: Path) -> None:
     stored = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert stored["decision_metrics"]["total_ue_decision_points"] == 1
     assert stored["prediction_metrics"]["hybrid_active_predictions"]["count"] == 1
+    assert stored["scientific_control"]["source"] == "config/default"
+    assert stored["scientific_control"]["shared_outage_dual_mu"] == 0.0
+    assert "selected_continuation_analysis" in stored
+    assert "immediate_prep_delay_analysis" in stored
+    assert "prepared_release_analysis" in stored

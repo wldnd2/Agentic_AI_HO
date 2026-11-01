@@ -36,6 +36,116 @@ def _action_category(env: LEOMobilityEnv, action: int) -> str:
     raise ValueError(f"unknown action index {action}")
 
 
+def _selected_sequence(
+    result: ReasoningResult, ue_id: int, action: int
+) -> tuple[int, ...]:
+    sequences = getattr(result, "selected_action_sequences", None)
+    if sequences is None:
+        return ()
+    sequence = np.asarray(sequences[ue_id, action], dtype=np.int64)
+    if sequence.ndim != 1 or np.any(sequence < 0):
+        return ()
+    return tuple(int(value) for value in sequence)
+
+
+def _classify_selected_continuation(
+    env: LEOMobilityEnv,
+    protocol_state: str,
+    immediate_action: int,
+    sequence: tuple[int, ...],
+) -> tuple[str, tuple[str, ...]]:
+    if not sequence:
+        return "unavailable", ()
+    categories = tuple(_action_category(env, action) for action in sequence)
+    immediate_category = _action_category(env, immediate_action)
+    if sequence[0] != immediate_action:
+        return "other", categories
+
+    future = categories[1:]
+    all_future_stay = all(category == "STAY" for category in future)
+    has_prep = "PREP" in future
+    has_commit = "COMMIT" in future
+    has_release = "RELEASE" in future
+
+    if protocol_state == "SINGLE" and immediate_category == "STAY":
+        if all_future_stay:
+            return "pure_stay", categories
+        if has_prep and has_commit and future.index("PREP") < future.index("COMMIT"):
+            return "stay_then_delayed_prep_commit", categories
+    elif protocol_state == "SINGLE" and immediate_category == "PREP":
+        if has_commit:
+            return "prep_then_commit", categories
+        if has_release:
+            return "prep_then_release", categories
+        if all_future_stay:
+            return "prep_hold", categories
+    elif protocol_state == "PREPARED" and immediate_category == "STAY":
+        if all_future_stay:
+            return "prepared_hold", categories
+        if has_commit:
+            return "stay_then_future_commit", categories
+        if has_release:
+            return "stay_then_future_release", categories
+    elif protocol_state == "PREPARED" and immediate_category == "RELEASE":
+        if has_prep and has_commit and future.index("PREP") < future.index("COMMIT"):
+            return "release_then_reprep_commit", categories
+        if all_future_stay:
+            return "pure_release", categories
+    elif protocol_state == "PREPARED" and immediate_category == "COMMIT":
+        if all_future_stay:
+            return "commit_switch", categories
+    elif protocol_state in ("SWITCHING", "COOLDOWN"):
+        if immediate_category == "STAY" and all_future_stay:
+            return "pure_stay", categories
+    return "other", categories
+
+
+def _selected_continuation_fields(
+    env: LEOMobilityEnv,
+    result: ReasoningResult,
+    ue_id: int,
+    action: int,
+    protocol_state: str,
+) -> tuple[str, str, str]:
+    sequence = _selected_sequence(result, ue_id, action)
+    continuation, categories = _classify_selected_continuation(
+        env, protocol_state, action, sequence
+    )
+    return (
+        continuation,
+        json.dumps(sequence, separators=(",", ":")),
+        json.dumps(categories, separators=(",", ":")),
+    )
+
+
+def _feasible_selected_continuations(
+    env: LEOMobilityEnv,
+    result: ReasoningResult,
+    ue_id: int,
+    feasible: np.ndarray,
+    protocol_state: str,
+) -> tuple[str, str, str]:
+    continuations: dict[str, str] = {}
+    sequences: dict[str, list[int]] = {}
+    category_sequences: dict[str, list[str]] = {}
+    for action_value in feasible:
+        action = int(action_value)
+        sequence = _selected_sequence(result, ue_id, action)
+        continuation, categories = _classify_selected_continuation(
+            env, protocol_state, action, sequence
+        )
+        key = str(action)
+        continuations[key] = continuation
+        sequences[key] = list(sequence)
+        category_sequences[key] = list(categories)
+    compact = {"separators": (",", ":"), "sort_keys": True}
+    return (
+        json.dumps(continuations, **compact),
+        json.dumps(sequences, **compact),
+        json.dumps(category_sequences, **compact),
+    )
+
+
 def _ranking(values: np.ndarray, feasible: np.ndarray) -> tuple[int, ...]:
     return tuple(
         sorted(
@@ -110,6 +220,89 @@ def _preferred_metrics(
     }
 
 
+def _decision_continuation_diagnostics(
+    env: LEOMobilityEnv,
+    result: ReasoningResult,
+    ue_id: int,
+    feasible: np.ndarray,
+    preferred_action: int,
+    protocol_state: str,
+) -> dict[str, Any]:
+    continuation, sequence, category_sequence = _selected_continuation_fields(
+        env, result, ue_id, preferred_action, protocol_state
+    )
+    (
+        feasible_continuations,
+        feasible_sequences,
+        feasible_category_sequences,
+    ) = _feasible_selected_continuations(
+        env, result, ue_id, feasible, protocol_state
+    )
+    stay_cost = (
+        float(result.total_costs[ue_id, 0]) if 0 in feasible else None
+    )
+    stay_sequence = _selected_sequence(result, ue_id, 0) if 0 in feasible else ()
+    stay_continuation, _ = _classify_selected_continuation(
+        env, protocol_state, 0, stay_sequence
+    )
+
+    prepare_actions = [
+        int(action)
+        for action in feasible
+        if _action_category(env, int(action)) == "PREP"
+    ]
+    best_immediate_prep_cost = (
+        min(float(result.total_costs[ue_id, action]) for action in prepare_actions)
+        if protocol_state == "SINGLE" and prepare_actions
+        else None
+    )
+    prep_minus_stay = (
+        best_immediate_prep_cost - stay_cost
+        if best_immediate_prep_cost is not None and stay_cost is not None
+        else None
+    )
+
+    release_feasible = env.release_action in feasible
+    release_cost = (
+        float(result.total_costs[ue_id, env.release_action])
+        if protocol_state == "PREPARED" and release_feasible
+        else None
+    )
+    release_sequence = (
+        _selected_sequence(result, ue_id, env.release_action)
+        if release_feasible
+        else ()
+    )
+    release_continuation, _ = _classify_selected_continuation(
+        env, protocol_state, env.release_action, release_sequence
+    )
+    return {
+        "selected_continuation": continuation,
+        "selected_sequence": sequence,
+        "selected_category_sequence": category_sequence,
+        "feasible_selected_continuations": feasible_continuations,
+        "feasible_selected_sequences": feasible_sequences,
+        "feasible_selected_category_sequences": feasible_category_sequences,
+        "best_immediate_prep_cost": best_immediate_prep_cost,
+        "selected_stay_cost": stay_cost if protocol_state == "SINGLE" else None,
+        "selected_stay_contains_delayed_prep": int(
+            protocol_state == "SINGLE"
+            and stay_continuation == "stay_then_delayed_prep_commit"
+        ),
+        "immediate_prep_minus_stay_cost": prep_minus_stay,
+        "stay_reference_cost": stay_cost if protocol_state == "PREPARED" else None,
+        "release_cost": release_cost,
+        "selected_release_contains_reprep": int(
+            protocol_state == "PREPARED"
+            and release_continuation == "release_then_reprep_commit"
+        ),
+        "selected_stay_contains_future_commit": int(
+            protocol_state == "PREPARED"
+            and stay_continuation == "stay_then_future_commit"
+        ),
+    }
+
+
 def _decision_rows(
     env: LEOMobilityEnv,
     episode: int,
@@ -129,6 +322,7 @@ def _decision_rows(
     }
     for ue in env.ues:
         ue_id = ue.ue_id
+        protocol_state = ue.state.name
         feasible = np.flatnonzero(masks[ue_id] > 0.0)
         geometry_ranking = _ranking(geometry_result.raw_costs[ue_id], feasible)
         hybrid_ranking = _ranking(hybrid_result.raw_costs[ue_id], feasible)
@@ -160,11 +354,27 @@ def _decision_rows(
             geometry_result, ue_id, geometry_action
         )
         hybrid_metrics = _preferred_metrics(hybrid_result, ue_id, hybrid_action)
+        geometry_continuations = _decision_continuation_diagnostics(
+            env,
+            geometry_result,
+            ue_id,
+            feasible,
+            geometry_action,
+            protocol_state,
+        )
+        hybrid_continuations = _decision_continuation_diagnostics(
+            env,
+            hybrid_result,
+            ue_id,
+            feasible,
+            hybrid_action,
+            protocol_state,
+        )
         row: dict[str, Any] = {
             "episode": episode,
             "timestep": timestep,
             "ue_id": ue_id,
-            "protocol_state": ue.state.name,
+            "protocol_state": protocol_state,
             "feasible_action_mask": json.dumps(
                 [int(value > 0.0) for value in masks[ue_id]], separators=(",", ":")
             ),
@@ -213,6 +423,10 @@ def _decision_rows(
             row[f"geometry_preferred_{name}"] = value
         for name, value in hybrid_metrics.items():
             row[f"hybrid_preferred_{name}"] = value
+        for name, value in geometry_continuations.items():
+            row[f"geometry_{name}"] = value
+        for name, value in hybrid_continuations.items():
+            row[f"hybrid_{name}"] = value
         for output_name, attribute_name in vector_fields.items():
             geometry_values = getattr(geometry_result, attribute_name)[ue_id]
             hybrid_values = getattr(hybrid_result, attribute_name)[ue_id]
@@ -881,6 +1095,185 @@ def build_top_divergence_examples(
     return examples
 
 
+def _signed_distribution(values: list[float]) -> dict[str, float | int]:
+    array = np.asarray(values, dtype=np.float64)
+    if array.size == 0:
+        return {
+            "count": 0,
+            "mean": 0.0,
+            "median": 0.0,
+            "p05": 0.0,
+            "p95": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "fraction_negative": 0.0,
+            "fraction_zero": 0.0,
+            "fraction_positive": 0.0,
+        }
+    return {
+        "count": int(array.size),
+        "mean": float(np.mean(array)),
+        "median": float(np.median(array)),
+        "p05": float(np.percentile(array, 5)),
+        "p95": float(np.percentile(array, 95)),
+        "min": float(np.min(array)),
+        "max": float(np.max(array)),
+        "fraction_negative": float(np.mean(array < 0.0)),
+        "fraction_zero": float(np.mean(array == 0.0)),
+        "fraction_positive": float(np.mean(array > 0.0)),
+    }
+
+
+def _selected_continuation_analysis(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    states = ("SINGLE", "PREPARED", "SWITCHING", "COOLDOWN")
+    output: dict[str, Any] = {}
+    for reasoner in ("geometry", "hybrid"):
+        reasoner_output: dict[str, Any] = {}
+        class_field = f"{reasoner}_selected_continuation"
+        category_field = f"{reasoner}_preferred_category"
+        for state in states:
+            state_rows = [row for row in rows if row["protocol_state"] == state]
+            category_counts: dict[str, int] = {}
+            for row in state_rows:
+                category = str(row[category_field])
+                category_counts[category] = category_counts.get(category, 0) + 1
+
+            classes: dict[str, Any] = {}
+            for row in state_rows:
+                continuation = str(row.get(class_field, "unavailable"))
+                category = str(row[category_field])
+                entry = classes.setdefault(
+                    continuation,
+                    {
+                        "count": 0,
+                        "fraction_within_state": 0.0,
+                        "by_preferred_immediate_action_category": {},
+                    },
+                )
+                entry["count"] += 1
+                category_entry = entry[
+                    "by_preferred_immediate_action_category"
+                ].setdefault(
+                    category,
+                    {
+                        "count": 0,
+                        "fraction_within_preferred_immediate_action_category": 0.0,
+                    },
+                )
+                category_entry["count"] += 1
+
+            for entry in classes.values():
+                entry["fraction_within_state"] = (
+                    entry["count"] / len(state_rows) if state_rows else 0.0
+                )
+                for category, category_entry in entry[
+                    "by_preferred_immediate_action_category"
+                ].items():
+                    denominator = category_counts[category]
+                    category_entry[
+                        "fraction_within_preferred_immediate_action_category"
+                    ] = (
+                        category_entry["count"] / denominator
+                        if denominator
+                        else 0.0
+                    )
+            reasoner_output[state] = {
+                "decision_points": len(state_rows),
+                "preferred_immediate_action_category_counts": category_counts,
+                "classes": classes,
+            }
+        output[reasoner] = reasoner_output
+    return output
+
+
+def _immediate_prep_delay_analysis(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    single_rows = [row for row in rows if row["protocol_state"] == "SINGLE"]
+    output: dict[str, Any] = {}
+    for reasoner in ("geometry", "hybrid"):
+        difference_field = f"{reasoner}_immediate_prep_minus_stay_cost"
+        comparable = [
+            row for row in single_rows if row.get(difference_field) is not None
+        ]
+        delayed_count = sum(
+            int(row.get(f"{reasoner}_selected_stay_contains_delayed_prep", 0))
+            for row in comparable
+        )
+        output[reasoner] = {
+            "single_decision_points": len(single_rows),
+            "comparable_immediate_prep_points": len(comparable),
+            "selected_stay_delayed_prep_count": delayed_count,
+            "selected_stay_delayed_prep_fraction": (
+                delayed_count / len(comparable) if comparable else 0.0
+            ),
+            "best_immediate_prep_cost": _signed_distribution(
+                [
+                    float(row[f"{reasoner}_best_immediate_prep_cost"])
+                    for row in comparable
+                ]
+            ),
+            "selected_stay_continuation_cost": _signed_distribution(
+                [float(row[f"{reasoner}_selected_stay_cost"]) for row in comparable]
+            ),
+            "best_immediate_prep_minus_selected_stay_cost": _signed_distribution(
+                [float(row[difference_field]) for row in comparable]
+            ),
+        }
+    return output
+
+
+def _prepared_release_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    prepared_rows = [
+        row for row in rows if row["protocol_state"] == "PREPARED"
+    ]
+    output: dict[str, Any] = {}
+    for reasoner in ("geometry", "hybrid"):
+        release_field = f"{reasoner}_release_cost"
+        stay_field = f"{reasoner}_stay_reference_cost"
+        comparable = [
+            row
+            for row in prepared_rows
+            if row.get(release_field) is not None
+            and row.get(stay_field) is not None
+        ]
+        reprep_count = sum(
+            int(row.get(f"{reasoner}_selected_release_contains_reprep", 0))
+            for row in comparable
+        )
+        future_commit_count = sum(
+            int(row.get(f"{reasoner}_selected_stay_contains_future_commit", 0))
+            for row in prepared_rows
+        )
+        output[reasoner] = {
+            "prepared_decision_points": len(prepared_rows),
+            "release_comparable_points": len(comparable),
+            "selected_release_reprep_count": reprep_count,
+            "selected_release_reprep_fraction": (
+                reprep_count / len(comparable) if comparable else 0.0
+            ),
+            "selected_stay_future_commit_count": future_commit_count,
+            "selected_stay_future_commit_fraction": (
+                future_commit_count / len(prepared_rows) if prepared_rows else 0.0
+            ),
+            "stay_reference_cost": _signed_distribution(
+                [float(row[stay_field]) for row in comparable]
+            ),
+            "release_cost": _signed_distribution(
+                [float(row[release_field]) for row in comparable]
+            ),
+            "release_minus_stay_cost": _signed_distribution(
+                [
+                    float(row[release_field]) - float(row[stay_field])
+                    for row in comparable
+                ]
+            ),
+        }
+    return output
+
+
 def build_summary(
     decision_rows: list[dict[str, Any]],
     prediction_rows: list[dict[str, Any]],
@@ -888,6 +1281,7 @@ def build_summary(
     policy: str,
     coordination_price_mode: str = "shared zero vector",
     outage_dual_mu: float = 0.0,
+    outage_dual_source: str = "config/default",
 ) -> dict[str, Any]:
     total = len(decision_rows)
     post_warmup = [row for row in decision_rows if bool(row["history_ready"])]
@@ -937,6 +1331,7 @@ def build_summary(
             "behavior_policy": policy,
             "reasoner_recommendations_control_environment": False,
             "shared_coordination_prices": coordination_price_mode,
+            "source": outage_dual_source,
             "shared_outage_dual_mu": outage_dual_mu,
         },
         "decision_metrics": {
@@ -992,6 +1387,13 @@ def build_summary(
         "service_deficit_audit": _service_deficit_audit(decision_rows),
         "divergence_vs_agreement": _divergence_vs_agreement(decision_rows),
         "prep_specific_analysis": _prep_specific_analysis(decision_rows),
+        "selected_continuation_analysis": _selected_continuation_analysis(
+            decision_rows
+        ),
+        "immediate_prep_delay_analysis": _immediate_prep_delay_analysis(
+            decision_rows
+        ),
+        "prepared_release_analysis": _prepared_release_analysis(decision_rows),
         "top_divergence_examples": {
             "maximum_rows": 100,
             "row_count": min(
@@ -1070,6 +1472,28 @@ def _print_summary(summary: dict[str, Any]) -> None:
     )
 
 
+def _resolve_shared_outage_dual(
+    requested_value: float | None,
+    reliability_controller: ReliabilityDualController,
+    use_constraint: bool,
+) -> tuple[float, str]:
+    if requested_value is None:
+        return (
+            reliability_controller.mu if use_constraint else 0.0,
+            "config/default",
+        )
+    fixed_value = float(requested_value)
+    if (
+        not np.isfinite(fixed_value)
+        or not 0.0 <= fixed_value <= reliability_controller.mu_max
+    ):
+        raise ValueError(
+            "--outage-dual-mu must be finite and satisfy "
+            f"0 <= value <= configured mu_max ({reliability_controller.mu_max})"
+        )
+    return fixed_value, "cli_fixed_override"
+
+
 def run(args: argparse.Namespace) -> None:
     if args.episodes <= 0:
         raise ValueError("episodes must be positive")
@@ -1119,7 +1543,11 @@ def run(args: argparse.Namespace) -> None:
     )
     decisions: list[dict[str, Any]] = []
     predictions: list[dict[str, Any]] = []
-    shared_outage_dual = reliability_controller.mu if use_constraint else 0.0
+    shared_outage_dual, outage_dual_source = _resolve_shared_outage_dual(
+        getattr(args, "outage_dual_mu", None),
+        reliability_controller,
+        use_constraint,
+    )
     for episode in range(args.episodes):
         env.reset(seed=args.seed + episode)
         if price_coordinator is not None:
@@ -1181,6 +1609,7 @@ def run(args: argparse.Namespace) -> None:
             else "shared zero vector"
         ),
         outage_dual_mu=shared_outage_dual,
+        outage_dual_source=outage_dual_source,
     )
     write_outputs(args.output, decisions, predictions, summary)
     _print_summary(summary)
@@ -1202,6 +1631,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--policy", choices=("max_sinr", "random_feasible"), default="max_sinr"
+    )
+    parser.add_argument(
+        "--outage-dual-mu",
+        type=float,
+        default=None,
+        help=(
+            "fixed shared diagnostic outage dual; must be between zero and "
+            "configured constraint.mu_max"
+        ),
     )
     parser.add_argument("--output", required=True)
     return parser.parse_args()
