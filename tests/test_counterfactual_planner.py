@@ -56,6 +56,14 @@ def _ue_with_candidate(env: LEOMobilityEnv) -> tuple[int, int]:
     return ue_id, env.candidates[ue_id][0]
 
 
+def _counterfactual_plans(
+    env: LEOMobilityEnv, reasoner: LookaheadReasoner, ue_id: int
+) -> dict[int, list[tuple[tuple[int, ...], int | None]]]:
+    return reasoner.planner._counterfactual_plans(
+        env, ue_id, env.action_masks()[ue_id]
+    )
+
+
 def test_omitted_objective_matches_explicit_legacy_outputs() -> None:
     config = _config()
     env = LEOMobilityEnv(config)
@@ -123,6 +131,130 @@ def test_common_service_constant_cancels_from_deltas() -> None:
         np.testing.assert_allclose(actual, expected, atol=1e-14)
 
 
+def test_every_counterfactual_continuation_preserves_first_action() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+
+    def assert_first_actions() -> None:
+        plans = _counterfactual_plans(env, reasoner, ue_id)
+        for immediate_action, action_plans in plans.items():
+            assert action_plans
+            assert all(
+                sequence[0] == immediate_action for sequence, _ in action_plans
+            )
+
+    assert_first_actions()
+    env.ues[ue_id].state = MobilityState.PREPARED
+    env.ues[ue_id].secondary_cell = target
+    for timer in (2, 0):
+        env.ues[ue_id].protocol_timer = timer
+        assert_first_actions()
+    env.ues[ue_id].state = MobilityState.SWITCHING
+    env.ues[ue_id].protocol_timer = 1
+    assert_first_actions()
+
+
+def test_single_stay_has_pure_and_delayed_prepare_continuations() -> None:
+    env, reasoner = _case()
+    ue_id, _ = _ue_with_candidate(env)
+    current_candidates = tuple(env.candidates[ue_id])
+    plans = _counterfactual_plans(env, reasoner, ue_id)
+    stay_plans = plans[0]
+    assert any(all(action == 0 for action in sequence) for sequence, _ in stay_plans)
+    for slot, target in enumerate(current_candidates):
+        prepare_action = env.prepare_start + slot
+        assert any(
+            plan_target == target
+            and sequence[0] == 0
+            and sequence[1] == prepare_action
+            and env.commit_action in sequence
+            for sequence, plan_target in stay_plans
+        )
+
+
+def test_immediate_prepare_has_commit_abort_and_hold_continuations() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+    prepare_action = env.prepare_start
+    plans = _counterfactual_plans(env, reasoner, ue_id)[prepare_action]
+    assert all(plan_target == target for _, plan_target in plans)
+    assert any(env.commit_action in sequence for sequence, _ in plans)
+    assert any(sequence[1] == env.release_action for sequence, _ in plans)
+    assert any(all(action == 0 for action in sequence[1:]) for sequence, _ in plans)
+
+
+def test_prepared_waiting_stay_commits_only_after_timer_wait() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+    ue = env.ues[ue_id]
+    ue.state = MobilityState.PREPARED
+    ue.secondary_cell = target
+    ue.protocol_timer = 2
+    stay_plans = _counterfactual_plans(env, reasoner, ue_id)[0]
+    commit_plan = next(
+        sequence for sequence, _ in stay_plans if env.commit_action in sequence
+    )
+    assert commit_plan[:2] == (0, 0)
+    assert commit_plan[2] == env.commit_action
+    assert any(sequence[1] == env.release_action for sequence, _ in stay_plans)
+
+
+def test_prepared_ready_stay_has_next_commit_and_release_options() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+    ue = env.ues[ue_id]
+    ue.state = MobilityState.PREPARED
+    ue.secondary_cell = target
+    ue.protocol_timer = 0
+    stay_plans = _counterfactual_plans(env, reasoner, ue_id)[0]
+    assert any(sequence[1] == env.commit_action for sequence, _ in stay_plans)
+    assert any(sequence[1] == env.release_action for sequence, _ in stay_plans)
+    assert any(all(action == 0 for action in sequence) for sequence, _ in stay_plans)
+
+
+def test_release_can_reprepare_only_from_current_candidate_pool() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+    current_candidates = tuple(env.candidates[ue_id])
+    ue = env.ues[ue_id]
+    ue.state = MobilityState.PREPARED
+    ue.secondary_cell = target
+    ue.protocol_timer = 0
+    release_plans = _counterfactual_plans(
+        env, reasoner, ue_id
+    )[env.release_action]
+    for slot, candidate in enumerate(current_candidates):
+        assert any(
+            sequence[0] == env.release_action
+            and sequence[1] == env.prepare_start + slot
+            and env.commit_action in sequence
+            and plan_target == candidate
+            for sequence, plan_target in release_plans
+        )
+    assert {
+        plan_target for _, plan_target in release_plans if plan_target is not None
+    }.issubset(set(current_candidates))
+
+
+def test_plan_generation_does_not_reselect_future_candidates() -> None:
+    env, reasoner = _case()
+    ue_id, _ = _ue_with_candidate(env)
+    current_candidates = tuple(env.candidates[ue_id])
+    with patch.object(
+        env,
+        "_select_candidates",
+        side_effect=AssertionError("future candidate selection must not be called"),
+    ):
+        plans = _counterfactual_plans(env, reasoner, ue_id)
+    generated_targets = {
+        target
+        for action_plans in plans.values()
+        for _, target in action_plans
+        if target is not None
+    }
+    assert generated_targets.issubset(set(current_candidates))
+
+
 def test_reliability_dual_is_zero_at_zero_and_operational_when_positive() -> None:
     env, reasoner = _case(use_constraint=True)
     ue_id, target = _ue_with_candidate(env)
@@ -171,7 +303,8 @@ def test_prepared_release_differs_only_through_existing_control_cost() -> None:
     ue.state = MobilityState.PREPARED
     ue.protocol_timer = 0
     env.min_elevation_rad = -np.pi / 2.0
-    result = reasoner.analyze(env)
+    with patch.object(reasoner, "_future_link", return_value=(6.0, 1.0)):
+        result = reasoner.analyze(env)
     assert result.delta_service_cost is not None
     assert result.delta_control_cost is not None
     assert result.delta_total_cost is not None
@@ -224,6 +357,81 @@ def test_better_than_stay_plan_can_have_negative_raw_cost() -> None:
     with patch.object(reasoner, "_future_link", side_effect=better_target_link):
         result = reasoner.analyze(env)
     assert result.raw_costs[ue_id, env.prepare_start] < 0.0
+
+
+def test_good_prepared_target_makes_stay_select_future_commit() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+    ue = env.ues[ue_id]
+    ue.state = MobilityState.PREPARED
+    ue.secondary_cell = target
+    ue.protocol_timer = 0
+    env.remaining_visibility[ue_id, target] = 1e9
+    env.min_elevation_rad = -np.pi / 2.0
+
+    def good_target_link(
+        _env: LEOMobilityEnv,
+        _ue_id: int,
+        cell_id: int | None,
+        _offset: int,
+    ) -> tuple[float, float]:
+        return (1.0, 1.0 if cell_id == target else 0.0)
+
+    with patch.object(reasoner, "_future_link", side_effect=good_target_link):
+        result = reasoner.analyze(env)
+    assert result.selected_action_sequences is not None
+    selected_stay = result.selected_action_sequences[ue_id, 0]
+    assert selected_stay[0] == 0
+    assert selected_stay[1] == env.commit_action
+
+
+def test_bad_prepared_target_can_legitimately_prefer_release() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+    primary = env.ues[ue_id].primary_cell
+    ue = env.ues[ue_id]
+    ue.state = MobilityState.PREPARED
+    ue.secondary_cell = target
+    ue.protocol_timer = 0
+    env.remaining_visibility[ue_id, target] = 1e9
+    env.min_elevation_rad = -np.pi / 2.0
+
+    def bad_target_link(
+        _env: LEOMobilityEnv,
+        _ue_id: int,
+        cell_id: int | None,
+        _offset: int,
+    ) -> tuple[float, float]:
+        return (1.0, 1.0 if cell_id == primary else 0.0)
+
+    with patch.object(reasoner, "_future_link", side_effect=bad_target_link):
+        result = reasoner.analyze(env)
+    assert result.selected_action_sequences is not None
+    assert result.selected_action_sequences[ue_id, 0, 1] == env.release_action
+    assert result.raw_costs[ue_id, env.release_action] < 0.0
+
+
+def test_single_stay_can_select_delayed_prepare_instead_of_never_preparing() -> None:
+    env, reasoner = _case()
+    ue_id, target = _ue_with_candidate(env)
+    env.remaining_visibility[ue_id, target] = 1e9
+    env.min_elevation_rad = -np.pi / 2.0
+
+    def useful_soon_link(
+        _env: LEOMobilityEnv,
+        _ue_id: int,
+        cell_id: int | None,
+        _offset: int,
+    ) -> tuple[float, float]:
+        return (1.0, 1.0 if cell_id == target else 0.0)
+
+    with patch.object(reasoner, "_future_link", side_effect=useful_soon_link):
+        result = reasoner.analyze(env)
+    assert result.selected_action_sequences is not None
+    selected_stay = result.selected_action_sequences[ue_id, 0]
+    assert selected_stay[0] == 0
+    assert selected_stay[1] == env.prepare_start
+    assert env.commit_action in selected_stay
 
 
 def test_geometry_and_hybrid_support_counterfactual_objective(tmp_path: Path) -> None:

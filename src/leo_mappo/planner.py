@@ -34,6 +34,7 @@ class ReasoningResult:
     delta_control_cost: np.ndarray | None = None
     delta_coordination_cost: np.ndarray | None = None
     delta_total_cost: np.ndarray | None = None
+    selected_action_sequences: np.ndarray | None = None
 
 
 def _counterfactual_cost_deltas(
@@ -174,6 +175,11 @@ class CHOPlanner:
         delta_total_cost = np.zeros(
             (env.num_agents, env.action_dim), dtype=np.float64
         )
+        selected_action_sequences = np.full(
+            (env.num_agents, env.action_dim, self.horizon),
+            -1,
+            dtype=np.int64,
+        )
         current_prices = (
             np.zeros(env.num_cells, dtype=np.float64)
             if prices is None
@@ -191,7 +197,11 @@ class CHOPlanner:
             available = np.maximum(0.0, 1.0 - preparation)
 
         for ue in env.ues:
-            plans = self._plans(env, ue.ue_id, masks[ue.ue_id])
+            plans = (
+                self._counterfactual_plans(env, ue.ue_id, masks[ue.ue_id])
+                if self.planner_objective == "counterfactual"
+                else self._plans(env, ue.ue_id, masks[ue.ue_id])
+            )
             for action, action_plans in plans.items():
                 evaluated = [
                     self._evaluate_plan(
@@ -207,7 +217,13 @@ class CHOPlanner:
                     )
                     for plan, target in action_plans
                 ]
-                best_evaluation = min(evaluated, key=lambda item: item[0])
+                best_plan_index = min(
+                    range(len(evaluated)), key=lambda index: evaluated[index][0]
+                )
+                best_evaluation = evaluated[best_plan_index]
+                selected_action_sequences[ue.ue_id, action] = action_plans[
+                    best_plan_index
+                ][0]
                 (
                     cost,
                     first_deficit,
@@ -325,6 +341,7 @@ class CHOPlanner:
             delta_control_cost,
             delta_coordination_cost,
             delta_total_cost,
+            selected_action_sequences,
         )
 
     def _pad(self, actions: list[int], stay: int = 0) -> tuple[int, ...]:
@@ -333,6 +350,7 @@ class CHOPlanner:
     def _plans(
         self, env: LEOMobilityEnv, ue_id: int, mask: np.ndarray
     ) -> dict[int, list[tuple[tuple[int, ...], int | None]]]:
+        """Generate the fixed legacy continuation for each immediate action."""
         ue = env.ues[ue_id]
         plans: dict[int, list[tuple[tuple[int, ...], int | None]]] = {}
 
@@ -352,6 +370,108 @@ class CHOPlanner:
         elif ue.state == MobilityState.PREPARED:
             add(env.commit_action, [env.commit_action])
             add(env.release_action, [env.release_action])
+        for action in np.flatnonzero(mask > 0.0):
+            if int(action) not in plans:
+                add(int(action), [int(action)])
+        return plans
+
+    def _counterfactual_plans(
+        self, env: LEOMobilityEnv, ue_id: int, mask: np.ndarray
+    ) -> dict[int, list[tuple[tuple[int, ...], int | None]]]:
+        """Generate protocol-valid continuations with a fixed immediate action."""
+        ue = env.ues[ue_id]
+        plans: dict[int, list[tuple[tuple[int, ...], int | None]]] = {}
+        current_candidates = tuple(int(target) for target in env.candidates[ue_id])
+        preparation_steps = int(env.protocol_cfg["preparation_steps"])
+        switching_steps = int(env.protocol_cfg["switching_steps"])
+        prep_wait = [0] * preparation_steps
+        switch_wait = [0] * switching_steps
+
+        def add(
+            action: int,
+            sequence: list[int],
+            target: int | None = None,
+            *,
+            require_switched_service: bool = False,
+        ) -> None:
+            if not sequence or int(sequence[0]) != int(action):
+                raise ValueError(
+                    "counterfactual continuation must preserve its immediate action"
+                )
+            if require_switched_service and len(sequence) > self.horizon:
+                return
+            if mask[action] > 0.0:
+                plans.setdefault(action, []).append((self._pad(sequence), target))
+
+        add(0, [0])
+        if ue.state == MobilityState.SINGLE:
+            for slot, target in enumerate(current_candidates):
+                prepare_action = env.prepare_start + slot
+                add(
+                    0,
+                    [
+                        0,
+                        prepare_action,
+                        *prep_wait,
+                        env.commit_action,
+                        *switch_wait,
+                    ],
+                    target,
+                    require_switched_service=True,
+                )
+                add(
+                    prepare_action,
+                    [
+                        prepare_action,
+                        *prep_wait,
+                        env.commit_action,
+                        *switch_wait,
+                    ],
+                    target,
+                    require_switched_service=True,
+                )
+                add(
+                    prepare_action,
+                    [prepare_action, env.release_action],
+                    target,
+                )
+                add(prepare_action, [prepare_action, 0], target)
+        elif ue.state == MobilityState.PREPARED:
+            stay_decisions_before_commit = max(1, int(ue.protocol_timer))
+            add(
+                0,
+                [
+                    *([0] * stay_decisions_before_commit),
+                    env.commit_action,
+                    *switch_wait,
+                ],
+                require_switched_service=True,
+            )
+            add(0, [0, env.release_action])
+
+            if ue.protocol_timer == 0:
+                add(
+                    env.commit_action,
+                    [env.commit_action, *switch_wait],
+                    require_switched_service=True,
+                )
+
+            add(env.release_action, [env.release_action])
+            for slot, target in enumerate(current_candidates):
+                prepare_action = env.prepare_start + slot
+                add(
+                    env.release_action,
+                    [
+                        env.release_action,
+                        prepare_action,
+                        *prep_wait,
+                        env.commit_action,
+                        *switch_wait,
+                    ],
+                    target,
+                    require_switched_service=True,
+                )
+
         for action in np.flatnonzero(mask > 0.0):
             if int(action) not in plans:
                 add(int(action), [int(action)])
