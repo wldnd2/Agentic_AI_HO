@@ -36,6 +36,176 @@ def _action_category(env: LEOMobilityEnv, action: int) -> str:
     raise ValueError(f"unknown action index {action}")
 
 
+def _clipped_by_demand(
+    required_rate_bps: float,
+    potential_rate_bps: float,
+) -> bool:
+    return bool(
+        required_rate_bps > 0.0 and potential_rate_bps >= required_rate_bps
+    )
+
+
+def _deadline_aware_diagnostic_required_rate(
+    ue: Any,
+    interval_s: float,
+) -> float:
+    """Compute a current-state-only QoS demand without changing the simulator."""
+    if interval_s <= 0.0:
+        raise ValueError("interval_s must be positive")
+    queue_bits = float(ue.queue_packets * ue.packet_size_bits)
+    if queue_bits <= 0.0:
+        return 0.0
+    arrival_rate = float(ue.mean_arrival_mbps) * 1e6
+    remaining_deadline = max(
+        float(ue.deadline_s) - float(ue.head_of_line_delay_s),
+        interval_s,
+    )
+    deadline_rate = queue_bits / remaining_deadline
+    queue_one_step_cap = queue_bits / interval_s
+    return float(
+        min(queue_one_step_cap, max(arrival_rate, deadline_rate))
+    )
+
+
+def _geometry_link_service_diagnostic(
+    env: LEOMobilityEnv,
+    geometry_reasoner: LookaheadReasoner,
+    ue_id: int,
+    cell_id: int | None,
+    required_rate_bps: float,
+    diagnostic_required_rate_bps: float,
+    available: np.ndarray,
+) -> dict[str, Any]:
+    service_rate, potential_rate, success_probability, _ = (
+        geometry_reasoner.world_model.predicted_leg(
+            env,
+            ue_id,
+            cell_id,
+            0,
+            required_rate_bps,
+            available,
+        )
+    )
+    service_goodput = service_rate * success_probability
+    potential_goodput = potential_rate * success_probability
+    service_deficit = (
+        max(0.0, required_rate_bps - service_goodput) / required_rate_bps
+        if required_rate_bps > 0.0
+        else 0.0
+    )
+    return {
+        "cell_id": -1 if cell_id is None else int(cell_id),
+        "required_rate_bps": float(required_rate_bps),
+        "potential_rate_bps": float(potential_rate),
+        "service_rate_bps": float(service_rate),
+        "success_probability": float(success_probability),
+        "service_goodput_bps": float(service_goodput),
+        "potential_goodput_bps": float(potential_goodput),
+        "potential_rate_over_required_rate": (
+            float(potential_rate / required_rate_bps)
+            if required_rate_bps > 0.0
+            else None
+        ),
+        "clipped_by_demand": int(
+            _clipped_by_demand(required_rate_bps, potential_rate)
+        ),
+        "service_deficit": float(service_deficit),
+        "current_demand_capacity_sufficient": int(
+            required_rate_bps > 0.0
+            and potential_goodput >= required_rate_bps
+        ),
+        "diagnostic_qos_demand_capacity_sufficient": int(
+            diagnostic_required_rate_bps > 0.0
+            and potential_goodput >= diagnostic_required_rate_bps
+        ),
+    }
+
+
+def _geometry_service_decision_diagnostics(
+    env: LEOMobilityEnv,
+    geometry_reasoner: LookaheadReasoner,
+    masks: np.ndarray,
+) -> dict[int, dict[str, Any]]:
+    _, required_rates = env.observed_required_rates()
+    available = (
+        np.ones(env.num_cells, dtype=np.float64)
+        if env.v3_enabled
+        else np.maximum(0.0, 1.0 - env._compute_preparation_reservations())
+    )
+    output: dict[int, dict[str, Any]] = {}
+    for ue in env.ues:
+        ue_id = int(ue.ue_id)
+        required_rate = float(required_rates[ue_id])
+        diagnostic_required_rate = _deadline_aware_diagnostic_required_rate(
+            ue, env.interval_s
+        )
+        hol_deadline_ratio = (
+            float(ue.head_of_line_delay_s / ue.deadline_s)
+            if ue.deadline_s > 0.0
+            else 0.0
+        )
+        primary = _geometry_link_service_diagnostic(
+            env,
+            geometry_reasoner,
+            ue_id,
+            ue.primary_cell,
+            required_rate,
+            diagnostic_required_rate,
+            available,
+        )
+        candidates: list[dict[str, Any]] = []
+        for slot, cell_id in enumerate(env.candidates[ue_id]):
+            action = env.prepare_start + slot
+            if masks[ue_id, action] <= 0.0:
+                continue
+            candidate = _geometry_link_service_diagnostic(
+                env,
+                geometry_reasoner,
+                ue_id,
+                int(cell_id),
+                required_rate,
+                diagnostic_required_rate,
+                available,
+            )
+            candidate["prepare_action"] = int(action)
+            candidates.append(candidate)
+        best_candidate = (
+            max(
+                candidates,
+                key=lambda item: (
+                    float(item["potential_goodput_bps"]),
+                    float(item["potential_rate_bps"]),
+                    -int(item["cell_id"]),
+                ),
+            )
+            if candidates
+            else None
+        )
+        fields: dict[str, Any] = {
+            "current_required_rate_bps": required_rate,
+            "diagnostic_qos_required_rate_bps": diagnostic_required_rate,
+            "hol_deadline_ratio": hol_deadline_ratio,
+            "geometry_feasible_candidate_link_diagnostics": json.dumps(
+                candidates, separators=(",", ":"), sort_keys=True
+            ),
+            "geometry_feasible_candidate_count": len(candidates),
+        }
+        for name, value in primary.items():
+            fields[f"geometry_primary_{name}"] = value
+        diagnostic_names = tuple(primary)
+        for name in diagnostic_names:
+            fields[f"geometry_best_candidate_{name}"] = (
+                best_candidate[name] if best_candidate is not None else None
+            )
+        fields["geometry_best_candidate_prepare_action"] = (
+            best_candidate["prepare_action"]
+            if best_candidate is not None
+            else None
+        )
+        output[ue_id] = fields
+    return output
+
+
 def _selected_sequence(
     result: ReasoningResult, ue_id: int, action: int
 ) -> tuple[int, ...]:
@@ -523,6 +693,13 @@ def compare_current_state(
         geometry_result,
         hybrid_result,
     )
+    geometry_service_diagnostics = _geometry_service_decision_diagnostics(
+        env,
+        geometry_reasoner,
+        masks,
+    )
+    for row in decisions:
+        row.update(geometry_service_diagnostics[int(row["ue_id"])])
     predictions = _prediction_rows(
         env,
         episode,
@@ -1124,6 +1301,337 @@ def _signed_distribution(values: list[float]) -> dict[str, float | int]:
     }
 
 
+def _primary_service_record(row: dict[str, Any]) -> dict[str, Any] | None:
+    prefix = "geometry_primary_"
+    required_key = f"{prefix}required_rate_bps"
+    if required_key not in row:
+        return None
+    return {
+        key[len(prefix) :]: value
+        for key, value in row.items()
+        if key.startswith(prefix)
+    }
+
+
+def _candidate_service_records(row: dict[str, Any]) -> list[dict[str, Any]]:
+    value = row.get("geometry_feasible_candidate_link_diagnostics", "[]")
+    records = json.loads(value) if isinstance(value, str) else value
+    return list(records) if isinstance(records, list) else []
+
+
+def _active_link_records(
+    rows: list[dict[str, Any]],
+    role: str,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        selected = (
+            [_primary_service_record(row)]
+            if role == "current_primary"
+            else _candidate_service_records(row)
+        )
+        records.extend(
+            record
+            for record in selected
+            if record is not None
+            and float(record.get("required_rate_bps", 0.0)) > 0.0
+        )
+    return records
+
+
+def _service_saturation_subset(
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    clipped = sum(int(record["clipped_by_demand"]) for record in records)
+    ratios = [
+        float(record["potential_rate_over_required_rate"])
+        for record in records
+        if record.get("potential_rate_over_required_rate") is not None
+    ]
+    return {
+        "active_prediction_count": len(records),
+        "clipped_by_demand_count": clipped,
+        "fraction_clipped_by_demand": (
+            clipped / len(records) if records else 0.0
+        ),
+        "potential_rate_over_required_rate": _signed_distribution(ratios),
+    }
+
+
+def _single_primary_candidate_service_signal(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    all_single_count = sum(
+        int(
+            row.get("protocol_state") == "SINGLE"
+            and "current_required_rate_bps" in row
+        )
+        for row in rows
+    )
+    single_rows = [
+        row
+        for row in rows
+        if row.get("protocol_state") == "SINGLE"
+        and float(row.get("current_required_rate_bps", 0.0)) > 0.0
+    ]
+    comparable = [
+        row
+        for row in single_rows
+        if row.get("geometry_best_candidate_potential_rate_bps") is not None
+    ]
+
+    def absolute_difference(primary_field: str, candidate_field: str) -> list[float]:
+        return [
+            abs(float(row[primary_field]) - float(row[candidate_field]))
+            for row in comparable
+        ]
+
+    return {
+        "single_decision_points": all_single_count,
+        "active_single_decision_points": len(single_rows),
+        "comparable_best_candidate_points": len(comparable),
+        "best_candidate_selection": (
+            "maximum current Geometry potential_goodput_bps; ties use "
+            "potential_rate_bps then lowest cell_id"
+        ),
+        "absolute_potential_rate_difference_bps": _signed_distribution(
+            absolute_difference(
+                "geometry_primary_potential_rate_bps",
+                "geometry_best_candidate_potential_rate_bps",
+            )
+        ),
+        "absolute_potential_goodput_difference_bps": _signed_distribution(
+            absolute_difference(
+                "geometry_primary_potential_goodput_bps",
+                "geometry_best_candidate_potential_goodput_bps",
+            )
+        ),
+        "absolute_service_goodput_difference_bps": _signed_distribution(
+            absolute_difference(
+                "geometry_primary_service_goodput_bps",
+                "geometry_best_candidate_service_goodput_bps",
+            )
+        ),
+        "absolute_service_deficit_difference": _signed_distribution(
+            absolute_difference(
+                "geometry_primary_service_deficit",
+                "geometry_best_candidate_service_deficit",
+            )
+        ),
+    }
+
+
+def _service_saturation_analysis(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    roles = ("current_primary", "feasible_candidates")
+
+    def role_breakdown(selected_rows: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            role: _service_saturation_subset(
+                _active_link_records(selected_rows, role)
+            )
+            for role in roles
+        }
+
+    states = ("SINGLE", "PREPARED", "SWITCHING", "COOLDOWN")
+    return {
+        "all_protocol_states": role_breakdown(rows),
+        "by_protocol_state": {
+            state: role_breakdown(
+                [row for row in rows if row.get("protocol_state") == state]
+            )
+            for state in states
+        },
+        "single_primary_vs_best_candidate": (
+            _single_primary_candidate_service_signal(rows)
+        ),
+    }
+
+
+_HOL_DEADLINE_BINS = (
+    ("[0,0.25)", 0.0, 0.25),
+    ("[0.25,0.5)", 0.25, 0.5),
+    ("[0.5,0.75)", 0.5, 0.75),
+    ("[0.75,1.0)", 0.75, 1.0),
+    (">=1.0", 1.0, None),
+)
+
+
+def _deadline_demand_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    active_rows = [
+        row
+        for row in rows
+        if float(row.get("current_required_rate_bps", 0.0)) > 0.0
+    ]
+
+    def ratio(row: dict[str, Any]) -> float:
+        return float(row["diagnostic_qos_required_rate_bps"]) / float(
+            row["current_required_rate_bps"]
+        )
+
+    increased = [
+        row
+        for row in active_rows
+        if float(row["diagnostic_qos_required_rate_bps"])
+        > float(row["current_required_rate_bps"])
+    ]
+    by_bin: dict[str, Any] = {}
+    for label, lower, upper in _HOL_DEADLINE_BINS:
+        selected = [
+            row
+            for row in active_rows
+            if float(row.get("hol_deadline_ratio", 0.0)) >= lower
+            and (
+                upper is None
+                or float(row.get("hol_deadline_ratio", 0.0)) < upper
+            )
+        ]
+        bin_increased = sum(
+            int(
+                float(row["diagnostic_qos_required_rate_bps"])
+                > float(row["current_required_rate_bps"])
+            )
+            for row in selected
+        )
+        by_bin[label] = {
+            "active_ue_count": len(selected),
+            "diagnostic_demand_greater_count": bin_increased,
+            "fraction_diagnostic_demand_greater": (
+                bin_increased / len(selected) if selected else 0.0
+            ),
+            "diagnostic_over_current_required_rate": _signed_distribution(
+                [ratio(row) for row in selected]
+            ),
+        }
+    return {
+        "active_ue_decision_points": len(active_rows),
+        "diagnostic_demand_greater_count": len(increased),
+        "fraction_diagnostic_demand_greater": (
+            len(increased) / len(active_rows) if active_rows else 0.0
+        ),
+        "diagnostic_over_current_required_rate": _signed_distribution(
+            [ratio(row) for row in active_rows]
+        ),
+        "by_hol_deadline_ratio_bin": by_bin,
+    }
+
+
+def _capacity_sufficiency_subset(
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    current_count = sum(
+        int(record["current_demand_capacity_sufficient"])
+        for record in records
+    )
+    diagnostic_count = sum(
+        int(record["diagnostic_qos_demand_capacity_sufficient"])
+        for record in records
+    )
+    return {
+        "active_prediction_count": len(records),
+        "current_demand_sufficient_count": current_count,
+        "fraction_current_demand_sufficient": (
+            current_count / len(records) if records else 0.0
+        ),
+        "diagnostic_qos_demand_sufficient_count": diagnostic_count,
+        "fraction_diagnostic_qos_demand_sufficient": (
+            diagnostic_count / len(records) if records else 0.0
+        ),
+    }
+
+
+def _capacity_sufficiency_analysis(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        role: _capacity_sufficiency_subset(_active_link_records(rows, role))
+        for role in ("current_primary", "feasible_candidates")
+    }
+
+
+def _prep_conditioning_analysis(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    single_rows = [
+        row
+        for row in rows
+        if row.get("protocol_state") == "SINGLE"
+        and "current_required_rate_bps" in row
+    ]
+    output: dict[str, Any] = {}
+    for category in ("STAY", "PREP"):
+        selected = [
+            row
+            for row in single_rows
+            if row.get("geometry_preferred_category") == category
+        ]
+        with_candidate = [
+            row
+            for row in selected
+            if row.get("geometry_best_candidate_potential_goodput_bps")
+            is not None
+        ]
+
+        def distribution(field: str) -> dict[str, float | int]:
+            return _signed_distribution(
+                [float(row[field]) for row in selected if row.get(field) is not None]
+            )
+
+        output[f"geometry_prefers_{category}"] = {
+            "single_decision_points": len(selected),
+            "active_single_decision_points": sum(
+                int(float(row["current_required_rate_bps"]) > 0.0)
+                for row in selected
+            ),
+            "points_with_feasible_candidate": len(with_candidate),
+            "current_required_rate_bps": distribution(
+                "current_required_rate_bps"
+            ),
+            "diagnostic_qos_required_rate_bps": distribution(
+                "diagnostic_qos_required_rate_bps"
+            ),
+            "hol_deadline_ratio": distribution("hol_deadline_ratio"),
+            "primary_potential_goodput_margin_current_demand_bps": (
+                _signed_distribution(
+                    [
+                        float(row["geometry_primary_potential_goodput_bps"])
+                        - float(row["current_required_rate_bps"])
+                        for row in selected
+                    ]
+                )
+            ),
+            "best_candidate_potential_goodput_margin_current_demand_bps": (
+                _signed_distribution(
+                    [
+                        float(row["geometry_best_candidate_potential_goodput_bps"])
+                        - float(row["current_required_rate_bps"])
+                        for row in with_candidate
+                    ]
+                )
+            ),
+            "primary_potential_goodput_margin_diagnostic_qos_demand_bps": (
+                _signed_distribution(
+                    [
+                        float(row["geometry_primary_potential_goodput_bps"])
+                        - float(row["diagnostic_qos_required_rate_bps"])
+                        for row in selected
+                    ]
+                )
+            ),
+            "best_candidate_potential_goodput_margin_diagnostic_qos_demand_bps": (
+                _signed_distribution(
+                    [
+                        float(row["geometry_best_candidate_potential_goodput_bps"])
+                        - float(row["diagnostic_qos_required_rate_bps"])
+                        for row in with_candidate
+                    ]
+                )
+            ),
+        }
+    return output
+
+
 def _selected_continuation_analysis(
     rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -1394,6 +1902,16 @@ def build_summary(
             decision_rows
         ),
         "prepared_release_analysis": _prepared_release_analysis(decision_rows),
+        "service_saturation_analysis": _service_saturation_analysis(
+            decision_rows
+        ),
+        "deadline_demand_analysis": _deadline_demand_analysis(decision_rows),
+        "capacity_sufficiency_analysis": _capacity_sufficiency_analysis(
+            decision_rows
+        ),
+        "prep_conditioning_analysis": _prep_conditioning_analysis(
+            decision_rows
+        ),
         "top_divergence_examples": {
             "maximum_rows": 100,
             "row_count": min(

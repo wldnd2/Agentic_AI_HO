@@ -17,8 +17,11 @@ from scripts.compare_geometry_hybrid_planning import (
     _action_transition_matrix,
     _best_second_margin,
     _classify_selected_continuation,
+    _clipped_by_demand,
+    _deadline_aware_diagnostic_required_rate,
     _divergence_vs_agreement,
     _exact_action_divergence,
+    _geometry_service_decision_diagnostics,
     _immediate_prep_delay_analysis,
     _prepared_release_analysis,
     _ranking,
@@ -188,6 +191,123 @@ def test_behavior_action_is_independent_of_reasoner_recommendations() -> None:
         )
         stepped_actions.append(int(actions[0]))
     assert stepped_actions == [2, 2]
+
+
+def _diagnostic_ue(
+    *,
+    queue_packets: int = 1000,
+    packet_size_bits: int = 8000,
+    mean_arrival_mbps: float = 1.0,
+    deadline_s: float = 1.0,
+    head_of_line_delay_s: float = 0.5,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        queue_packets=queue_packets,
+        packet_size_bits=packet_size_bits,
+        mean_arrival_mbps=mean_arrival_mbps,
+        deadline_s=deadline_s,
+        head_of_line_delay_s=head_of_line_delay_s,
+    )
+
+
+def test_service_rate_clipping_classification() -> None:
+    assert _clipped_by_demand(10.0, 10.0)
+    assert _clipped_by_demand(10.0, 12.0)
+    assert not _clipped_by_demand(10.0, 9.999)
+    assert not _clipped_by_demand(0.0, 12.0)
+
+
+def test_deadline_aware_diagnostic_demand_is_zero_for_empty_queue() -> None:
+    ue = _diagnostic_ue(queue_packets=0)
+    assert _deadline_aware_diagnostic_required_rate(ue, 0.1) == 0.0
+
+
+def test_deadline_aware_diagnostic_demand_formula() -> None:
+    ue = _diagnostic_ue()
+    # queue_bits=8e6, remaining_deadline=0.5, arrival=1e6, cap=80e6
+    assert _deadline_aware_diagnostic_required_rate(ue, 0.1) == 16e6
+
+
+def test_deadline_aware_demand_increases_as_remaining_deadline_shrinks() -> None:
+    early = _diagnostic_ue(
+        queue_packets=100,
+        head_of_line_delay_s=0.0,
+    )
+    urgent = _diagnostic_ue(
+        queue_packets=100,
+        head_of_line_delay_s=0.8,
+    )
+    early_rate = _deadline_aware_diagnostic_required_rate(early, 0.1)
+    urgent_rate = _deadline_aware_diagnostic_required_rate(urgent, 0.1)
+    assert urgent_rate > early_rate
+
+
+def test_deadline_aware_demand_never_exceeds_one_step_queue_cap() -> None:
+    ue = _diagnostic_ue(
+        queue_packets=100,
+        mean_arrival_mbps=1000.0,
+        head_of_line_delay_s=0.99,
+    )
+    demand = _deadline_aware_diagnostic_required_rate(ue, 0.1)
+    queue_cap = ue.queue_packets * ue.packet_size_bits / 0.1
+    assert demand <= queue_cap
+
+
+def test_geometry_service_diagnostics_do_not_change_planner_or_environment() -> None:
+    env = _env()
+    geometry, _ = _reasoners(
+        env, _FakeResidualPredictor([0.0, 0.0], history_steps=1)
+    )
+    masks = env.action_masks()
+    before_costs = geometry.analyze(
+        env,
+        masks,
+        np.zeros(env.num_cells),
+        0.0,
+    ).raw_costs.copy()
+    before_state = (
+        env.step_index,
+        env.time_s,
+        env.observed_required_rates()[1].copy(),
+        masks.copy(),
+        tuple(
+            (
+                ue.primary_cell,
+                ue.secondary_cell,
+                ue.state,
+                ue.protocol_timer,
+                ue.queue_packets,
+                ue.head_of_line_delay_s,
+            )
+            for ue in env.ues
+        ),
+    )
+
+    diagnostics = _geometry_service_decision_diagnostics(env, geometry, masks)
+
+    after_costs = geometry.analyze(
+        env,
+        masks,
+        np.zeros(env.num_cells),
+        0.0,
+    ).raw_costs
+    assert diagnostics
+    assert np.array_equal(after_costs, before_costs)
+    assert env.step_index == before_state[0]
+    assert env.time_s == before_state[1]
+    assert np.array_equal(env.observed_required_rates()[1], before_state[2])
+    assert np.array_equal(env.action_masks(), before_state[3])
+    assert tuple(
+        (
+            ue.primary_cell,
+            ue.secondary_cell,
+            ue.state,
+            ue.protocol_timer,
+            ue.queue_packets,
+            ue.head_of_line_delay_s,
+        )
+        for ue in env.ues
+    ) == before_state[4]
 
 
 def test_selected_continuation_classification_rules() -> None:
@@ -561,3 +681,7 @@ def test_tiny_diagnostic_records_write_csv_and_json(tmp_path: Path) -> None:
     assert "selected_continuation_analysis" in stored
     assert "immediate_prep_delay_analysis" in stored
     assert "prepared_release_analysis" in stored
+    assert "service_saturation_analysis" in stored
+    assert "deadline_demand_analysis" in stored
+    assert "capacity_sufficiency_analysis" in stored
+    assert "prep_conditioning_analysis" in stored
