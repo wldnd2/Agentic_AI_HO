@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
 
 from leo_mappo.baselines import max_sinr_policy
 from leo_mappo.config import load_config
+from leo_mappo.demand import normalize_required_rate_model
 from leo_mappo.environment import LEOMobilityEnv
 from leo_mappo.prediction_dataset import (
     EpisodePredictionTrajectory,
@@ -14,6 +16,7 @@ from leo_mappo.prediction_dataset import (
 )
 from leo_mappo.residual_world_model import (
     FEATURE_DIM,
+    OBSERVABLE_LINK_FEATURES,
     build_observable_link_features,
 )
 from leo_mappo.ue import MobilityState
@@ -28,6 +31,42 @@ def _world_model(config: dict) -> GeometryWorldModel:
             reasoning.get("reliability_risk_temperature", 0.10)
         ),
     )
+
+
+def _metadata_path(dataset_path: str | Path) -> Path:
+    return Path(f"{Path(dataset_path)}.metadata.json")
+
+
+def build_collection_metadata(
+    args: argparse.Namespace,
+    config: dict,
+) -> dict:
+    """Describe one collection run without changing the NPZ dataset schema."""
+    base_seed = int(args.seed)
+    episode_count = int(args.episodes)
+    overrides = [str(path) for path in getattr(args, "override", [])]
+    return {
+        "schema_version": 1,
+        "dataset_path": str(args.output),
+        "required_rate_model": normalize_required_rate_model(
+            config["traffic"].get("required_rate_model")
+        ),
+        "config": str(args.config),
+        "overrides": overrides,
+        "base_seed": base_seed,
+        "episode_count": episode_count,
+        "episode_seed_progression": "base_seed + episode_id",
+        "episode_seeds": list(range(base_seed, base_seed + episode_count)),
+        "history_steps": int(args.history_steps),
+        "prediction_horizon_steps": int(args.horizon_steps),
+        "behavior_policy": str(args.policy),
+        "feature_dim": FEATURE_DIM,
+        "feature_order": list(OBSERVABLE_LINK_FEATURES),
+        "prediction_target": (
+            "true_realized_sinr_db(t+h) - "
+            "geometry_predicted_sinr_db(t+h | t)"
+        ),
+    }
 
 
 def _random_feasible_actions(
@@ -170,9 +209,12 @@ def collect(args: argparse.Namespace) -> None:
         horizon_steps=args.horizon_steps,
     )
     dataset.save(args.output)
+    metadata_path = _metadata_path(args.output)
+    with metadata_path.open("w", encoding="utf-8") as handle:
+        json.dump(build_collection_metadata(args, config), handle, indent=2)
     print(
         f"saved {dataset.sample_count} samples from {args.episodes} complete "
-        f"episodes to {Path(args.output)}"
+        f"episodes to {Path(args.output)}; metadata={metadata_path}"
     )
 
 

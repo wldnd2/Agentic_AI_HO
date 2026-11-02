@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
+from leo_mappo import load_config
 from leo_mappo.prediction_dataset import (
     EpisodePredictionTrajectory,
     PredictionDataset,
     build_prediction_dataset,
 )
-from leo_mappo.residual_world_model import FEATURE_DIM
+from leo_mappo.residual_world_model import FEATURE_DIM, OBSERVABLE_LINK_FEATURES
+from scripts.collect_world_model_data import (
+    _metadata_path,
+    build_collection_metadata,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _trajectory(features: np.ndarray | None = None) -> EpisodePredictionTrajectory:
@@ -81,3 +90,55 @@ def test_dataset_residual_target_and_npz_round_trip(tmp_path: Path) -> None:
         "cell_id",
     ):
         assert np.array_equal(getattr(dataset, name), getattr(restored, name))
+
+
+def _collection_args(output: Path) -> SimpleNamespace:
+    return SimpleNamespace(
+        config=ROOT / "configs/default.yaml",
+        override=[
+            ROOT / "configs/validation_agentic_challenge_v3.yaml",
+            ROOT / "configs/deadline_aware_demand.yaml",
+        ],
+        episodes=20,
+        seed=1001,
+        history_steps=8,
+        horizon_steps=6,
+        policy="max_sinr",
+        output=output,
+    )
+
+
+def test_deadline_aware_collection_metadata_records_provenance(
+    tmp_path: Path,
+) -> None:
+    args = _collection_args(tmp_path / "train.npz")
+    config = load_config(args.config, args.override)
+    metadata = build_collection_metadata(args, config)
+    assert metadata["required_rate_model"] == "deadline_aware"
+    assert metadata["base_seed"] == 1001
+    assert metadata["episode_count"] == 20
+    assert metadata["episode_seeds"] == list(range(1001, 1021))
+    assert metadata["history_steps"] == 8
+    assert metadata["prediction_horizon_steps"] == 6
+    assert metadata["behavior_policy"] == "max_sinr"
+    assert metadata["feature_order"] == list(OBSERVABLE_LINK_FEATURES)
+    assert metadata["prediction_target"] == (
+        "true_realized_sinr_db(t+h) - "
+        "geometry_predicted_sinr_db(t+h | t)"
+    )
+    assert metadata["overrides"][-1].endswith(
+        "configs/deadline_aware_demand.yaml"
+    )
+    assert _metadata_path(args.output) == Path(
+        f"{args.output}.metadata.json"
+    )
+
+
+def test_legacy_collection_metadata_keeps_arrival_capped_default(
+    tmp_path: Path,
+) -> None:
+    args = _collection_args(tmp_path / "legacy.npz")
+    args.override = [ROOT / "configs/validation_agentic_challenge_v3.yaml"]
+    config = load_config(args.config, args.override)
+    metadata = build_collection_metadata(args, config)
+    assert metadata["required_rate_model"] == "arrival_capped"
