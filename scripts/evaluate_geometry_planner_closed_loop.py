@@ -15,6 +15,11 @@ from leo_mappo.config import load_config
 from leo_mappo.environment import LEOMobilityEnv, StepOutput
 from leo_mappo.hybrid_world_model import HybridWorldModel
 from leo_mappo.planner import ReasoningResult
+from leo_mappo.predictive_control import (
+    build_predictive_reasoner as _build_predictive_reasoner,
+    predictive_controller_step,
+    select_greedy_feasible_actions,
+)
 from leo_mappo.reasoning import LookaheadReasoner
 from leo_mappo.ue import MobilityState
 
@@ -34,38 +39,6 @@ CANONICAL_CONTROL_COUNTERS = (
 )
 
 
-def select_greedy_feasible_actions(
-    raw_costs: np.ndarray,
-    masks: np.ndarray,
-) -> np.ndarray:
-    """Choose minimum-cost feasible actions with lowest-index tie-breaking."""
-    costs = np.asarray(raw_costs, dtype=np.float64)
-    feasible_masks = np.asarray(masks, dtype=np.float64)
-    if costs.shape != feasible_masks.shape or costs.ndim != 2:
-        raise ValueError("raw_costs and masks must be matching 2-D arrays")
-    actions = np.empty(costs.shape[0], dtype=np.int64)
-    for ue_id in range(costs.shape[0]):
-        feasible = np.flatnonzero(feasible_masks[ue_id] > 0.0)
-        if feasible.size == 0:
-            raise RuntimeError(f"UE {ue_id} has no feasible action")
-        actions[ue_id] = min(
-            (int(action) for action in feasible),
-            key=lambda action: (float(costs[ue_id, action]), action),
-        )
-    return actions
-
-
-def predictive_controller_step(
-    env: LEOMobilityEnv,
-    reasoner: LookaheadReasoner,
-) -> tuple[np.ndarray, np.ndarray, ReasoningResult, StepOutput]:
-    masks = env.action_masks()
-    result = reasoner.analyze(env, masks)
-    actions = select_greedy_feasible_actions(result.raw_costs, masks)
-    output = env.step(actions)
-    return masks, actions, result, output
-
-
 def geometry_controller_step(
     env: LEOMobilityEnv,
     reasoner: LookaheadReasoner,
@@ -80,37 +53,13 @@ def build_predictive_reasoner(
     world_model: str = "geometry",
     residual_model: str | Path | None = None,
 ) -> LookaheadReasoner:
-    model_mode = str(world_model).lower()
-    if model_mode not in ("geometry", "hybrid"):
-        raise ValueError("world_model must be either 'geometry' or 'hybrid'")
-    if model_mode == "hybrid" and residual_model is None:
-        raise ValueError("--residual-model is required with --world-model hybrid")
-
-    reasoning_config = dict(config.get("reasoning", {}))
-    reasoning_config["world_model"] = model_mode
-    if model_mode == "geometry":
-        reasoning_config.pop("residual_model_path", None)
-    else:
-        reasoning_config["residual_model_path"] = str(residual_model)
-    reasoner = LookaheadReasoner(
-        reasoning_config,
-        env.reward_cfg,
-        config.get("coordination", {}),
-        use_coordination=False,
-        use_constraint=False,
+    return _build_predictive_reasoner(
+        config,
+        env,
+        world_model=world_model,
+        residual_model=residual_model,
+        reasoner_factory=LookaheadReasoner,
     )
-    if reasoner.planner_objective != "counterfactual":
-        raise ValueError(
-            "closed-loop predictive-planner evaluation requires "
-            "reasoning.planner_objective=counterfactual"
-        )
-    if model_mode == "hybrid" and not isinstance(
-        reasoner.world_model, HybridWorldModel
-    ):
-        raise RuntimeError(
-            "hybrid evaluation did not construct the required HybridWorldModel"
-        )
-    return reasoner
 
 
 def build_geometry_reasoner(

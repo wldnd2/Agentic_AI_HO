@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -77,6 +78,18 @@ def test_dataset_residual_target_and_npz_round_trip(tmp_path: Path) -> None:
     )
     path = tmp_path / "prediction_data.npz"
     dataset.save(path)
+    with np.load(path, allow_pickle=False) as archive:
+        assert set(archive.files) == {
+            "histories",
+            "geometry_sinr_db",
+            "target_sinr_db",
+            "target_residual_db",
+            "target_mask",
+            "episode_id",
+            "time_index",
+            "ue_id",
+            "cell_id",
+        }
     restored = PredictionDataset.load(path)
     for name in (
         "histories",
@@ -104,6 +117,7 @@ def _collection_args(output: Path) -> SimpleNamespace:
         history_steps=8,
         horizon_steps=6,
         policy="max_sinr",
+        residual_model=None,
         output=output,
     )
 
@@ -118,9 +132,12 @@ def test_deadline_aware_collection_metadata_records_provenance(
     assert metadata["base_seed"] == 1001
     assert metadata["episode_count"] == 20
     assert metadata["episode_seeds"] == list(range(1001, 1021))
+    assert metadata["seed_range"] == {"first": 1001, "last": 1020}
     assert metadata["history_steps"] == 8
     assert metadata["prediction_horizon_steps"] == 6
     assert metadata["behavior_policy"] == "max_sinr"
+    assert metadata["world_model_controlling_environment"] is None
+    assert metadata["reasoner_controls_environment"] is False
     assert metadata["feature_order"] == list(OBSERVABLE_LINK_FEATURES)
     assert metadata["prediction_target"] == (
         "true_realized_sinr_db(t+h) - "
@@ -129,6 +146,9 @@ def test_deadline_aware_collection_metadata_records_provenance(
     assert metadata["overrides"][-1].endswith(
         "configs/deadline_aware_demand.yaml"
     )
+    assert "3GPP-inspired system-level CHO control abstraction" in metadata[
+        "control_abstraction"
+    ]["description"]
     assert _metadata_path(args.output) == Path(
         f"{args.output}.metadata.json"
     )
@@ -142,3 +162,31 @@ def test_legacy_collection_metadata_keeps_arrival_capped_default(
     config = load_config(args.config, args.override)
     metadata = build_collection_metadata(args, config)
     assert metadata["required_rate_model"] == "arrival_capped"
+
+
+def test_planner_collection_metadata_identifies_controlling_world_model(
+    tmp_path: Path,
+) -> None:
+    args = _collection_args(tmp_path / "planner.npz")
+    config = load_config(args.config, args.override)
+
+    args.policy = "geometry_planner"
+    geometry = build_collection_metadata(args, config)
+    assert geometry["behavior_policy"] == "geometry_planner"
+    assert geometry["world_model_controlling_environment"] == "geometry"
+    assert geometry["reasoner_controls_environment"] is True
+    assert "residual_model_path" not in geometry
+
+    checkpoint = tmp_path / "model.npz"
+    checkpoint.write_bytes(b"frozen residual checkpoint")
+    args.policy = "hybrid_planner"
+    args.residual_model = checkpoint
+    hybrid = build_collection_metadata(args, config)
+    assert hybrid["behavior_policy"] == "hybrid_planner"
+    assert hybrid["world_model_controlling_environment"] == "hybrid"
+    assert hybrid["reasoner_controls_environment"] is True
+    assert hybrid["residual_model_path"] == str(checkpoint.resolve())
+    assert hybrid["residual_model_sha256"] == hashlib.sha256(
+        checkpoint.read_bytes()
+    ).hexdigest()
+    assert hybrid["prediction_target"] == geometry["prediction_target"]
