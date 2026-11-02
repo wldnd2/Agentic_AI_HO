@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import json
 from collections import defaultdict
 from dataclasses import dataclass, field
-import json
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import numpy as np
 
 from leo_mappo.config import load_config
 from leo_mappo.environment import LEOMobilityEnv, StepOutput
+from leo_mappo.hybrid_world_model import HybridWorldModel
 from leo_mappo.planner import ReasoningResult
 from leo_mappo.reasoning import LookaheadReasoner
 from leo_mappo.ue import MobilityState
@@ -53,7 +55,7 @@ def select_greedy_feasible_actions(
     return actions
 
 
-def geometry_controller_step(
+def predictive_controller_step(
     env: LEOMobilityEnv,
     reasoner: LookaheadReasoner,
 ) -> tuple[np.ndarray, np.ndarray, ReasoningResult, StepOutput]:
@@ -64,13 +66,32 @@ def geometry_controller_step(
     return masks, actions, result, output
 
 
-def build_geometry_reasoner(
+def geometry_controller_step(
+    env: LEOMobilityEnv,
+    reasoner: LookaheadReasoner,
+) -> tuple[np.ndarray, np.ndarray, ReasoningResult, StepOutput]:
+    """Backward-compatible name for the shared predictive controller."""
+    return predictive_controller_step(env, reasoner)
+
+
+def build_predictive_reasoner(
     config: dict[str, Any],
     env: LEOMobilityEnv,
+    world_model: str = "geometry",
+    residual_model: str | Path | None = None,
 ) -> LookaheadReasoner:
+    model_mode = str(world_model).lower()
+    if model_mode not in ("geometry", "hybrid"):
+        raise ValueError("world_model must be either 'geometry' or 'hybrid'")
+    if model_mode == "hybrid" and residual_model is None:
+        raise ValueError("--residual-model is required with --world-model hybrid")
+
     reasoning_config = dict(config.get("reasoning", {}))
-    reasoning_config["world_model"] = "geometry"
-    reasoning_config.pop("residual_model_path", None)
+    reasoning_config["world_model"] = model_mode
+    if model_mode == "geometry":
+        reasoning_config.pop("residual_model_path", None)
+    else:
+        reasoning_config["residual_model_path"] = str(residual_model)
     reasoner = LookaheadReasoner(
         reasoning_config,
         env.reward_cfg,
@@ -80,10 +101,24 @@ def build_geometry_reasoner(
     )
     if reasoner.planner_objective != "counterfactual":
         raise ValueError(
-            "closed-loop Geometry evaluation requires "
+            "closed-loop predictive-planner evaluation requires "
             "reasoning.planner_objective=counterfactual"
         )
+    if model_mode == "hybrid" and not isinstance(
+        reasoner.world_model, HybridWorldModel
+    ):
+        raise RuntimeError(
+            "hybrid evaluation did not construct the required HybridWorldModel"
+        )
     return reasoner
+
+
+def build_geometry_reasoner(
+    config: dict[str, Any],
+    env: LEOMobilityEnv,
+) -> LookaheadReasoner:
+    """Build the historical Geometry-only reasoner."""
+    return build_predictive_reasoner(config, env, world_model="geometry")
 
 
 def load_evaluation_config(
@@ -112,7 +147,7 @@ def _current_primary_service_samples(
     env: LEOMobilityEnv,
     reasoner: LookaheadReasoner,
 ) -> list[tuple[float, bool, float]]:
-    """Return physical-demand Geometry service samples without changing state."""
+    """Return physical-demand service samples without changing state."""
     active, required_rates = env.current_required_rates()
     available = (
         np.ones(env.num_cells, dtype=np.float64)
@@ -476,19 +511,42 @@ def build_summary(
     seed: int,
     reasoner: LookaheadReasoner,
     required_rate_model: str,
+    world_model: str = "geometry",
+    residual_model: str | Path | None = None,
 ) -> dict[str, Any]:
+    scientific_control: dict[str, Any] = {
+        "configs": config_paths,
+        "seed": seed,
+        "episodes": len(episode_rows),
+        "episode_seed_progression": "seed + episode_index",
+        "controller": CONTROLLER_NAME,
+        "world_model": world_model,
+        "planner_objective": reasoner.planner_objective,
+        "required_rate_model": required_rate_model,
+        "reasoner_controls_environment": True,
+    }
+    if world_model == "hybrid":
+        if residual_model is None:
+            raise ValueError("hybrid summary requires a residual model path")
+        if not isinstance(reasoner.world_model, HybridWorldModel):
+            raise RuntimeError(
+                "hybrid summary requires a reasoner with HybridWorldModel"
+            )
+        checkpoint = Path(residual_model).expanduser().resolve()
+        scientific_control.update(
+            {
+                "residual_model_path": str(checkpoint),
+                "residual_model_sha256": hashlib.sha256(
+                    checkpoint.read_bytes()
+                ).hexdigest(),
+                "residual_history_length": reasoner.world_model.history_steps,
+                "residual_prediction_horizon": (
+                    reasoner.world_model.horizon_steps
+                ),
+            }
+        )
     return {
-        "scientific_control": {
-            "configs": config_paths,
-            "seed": seed,
-            "episodes": len(episode_rows),
-            "episode_seed_progression": "seed + episode_index",
-            "controller": CONTROLLER_NAME,
-            "world_model": "geometry",
-            "planner_objective": reasoner.planner_objective,
-            "required_rate_model": required_rate_model,
-            "reasoner_controls_environment": True,
-        },
+        "scientific_control": scientific_control,
         "traffic_qos": _summary_section(episode_rows, TRAFFIC_QOS_FIELDS),
         "queue_delay": _summary_section(episode_rows, QUEUE_DELAY_FIELDS),
         "handover_control": _summary_section(
@@ -532,7 +590,12 @@ def run(args: argparse.Namespace) -> None:
         raise ValueError("episodes must be positive")
     config = load_evaluation_config(args.config, args.override, args.seed)
     env = LEOMobilityEnv(config)
-    reasoner = build_geometry_reasoner(config, env)
+    reasoner = build_predictive_reasoner(
+        config,
+        env,
+        world_model=args.world_model,
+        residual_model=args.residual_model,
+    )
     episode_rows = [
         evaluate_episode(env, reasoner, episode, args.seed + episode)
         for episode in range(args.episodes)
@@ -544,6 +607,8 @@ def run(args: argparse.Namespace) -> None:
         args.seed,
         reasoner,
         env.required_rate_model,
+        world_model=args.world_model,
+        residual_model=args.residual_model,
     )
     write_outputs(args.output, episode_rows, summary)
     traffic = summary["traffic_qos"]["aggregate"]
@@ -555,10 +620,10 @@ def run(args: argparse.Namespace) -> None:
     )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Evaluate the Geometry counterfactual planner as a closed-loop "
+            "Evaluate a predictive counterfactual planner as a closed-loop "
             "diagnostic controller."
         )
     )
@@ -571,8 +636,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--world-model",
+        choices=("geometry", "hybrid"),
+        default="geometry",
+    )
+    parser.add_argument(
+        "--residual-model",
+        help="ResidualLinkPredictor checkpoint required for hybrid mode.",
+    )
     parser.add_argument("--output", required=True)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 if __name__ == "__main__":

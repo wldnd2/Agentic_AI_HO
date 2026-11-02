@@ -29,8 +29,16 @@ CHO_CONTROL_METRICS = (
     "requested_prep_actions",
     "requested_commit_actions",
     "requested_release_actions",
+    "successful_prep_transitions",
+    "rejected_prep_requests",
+    "successful_commit_starts",
     "completed_handovers",
+    "failed_handovers",
     "release_transitions",
+    "pingpong_events",
+    "mean_handovers_per_ue",
+    "mean_time_between_completed_handovers_s",
+    "mean_target_serving_duration_after_handover_s",
 )
 SERVICE_METRICS = (
     "mean_required_rate_bps",

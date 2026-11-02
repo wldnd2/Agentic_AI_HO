@@ -7,9 +7,11 @@ import numpy as np
 import pytest
 
 from scripts.compare_closed_loop_ab import (
+    CHO_CONTROL_METRICS,
     METRICS,
     compare_metric,
     match_episode_rows,
+    metric_direction,
     paired_bootstrap_mean_ci,
     read_episode_csv,
 )
@@ -145,3 +147,29 @@ def test_operational_metrics_have_no_assigned_success_direction() -> None:
     assert result["fraction_treatment_greater"] == 1 / 3
     assert result["fraction_treatment_lower"] == 1 / 3
     assert result["fraction_equal"] == 1 / 3
+
+
+@pytest.mark.parametrize(
+    "metric",
+    (
+        "successful_prep_transitions",
+        "rejected_prep_requests",
+        "successful_commit_starts",
+        "failed_handovers",
+        "pingpong_events",
+        "mean_handovers_per_ue",
+        "mean_time_between_completed_handovers_s",
+        "mean_target_serving_duration_after_handover_s",
+    ),
+)
+def test_extended_operational_metrics_are_direction_neutral(metric: str) -> None:
+    assert metric in CHO_CONTROL_METRICS
+    assert metric_direction(metric) == "operational_tradeoff"
+    result = compare_metric(
+        metric,
+        np.asarray([1.0, 2.0, 3.0]),
+        np.asarray([2.0, 2.0, 1.0]),
+    )
+    assert result["direction"] == "operational_tradeoff"
+    assert result["fraction_treatment_better"] is None
+    assert result["paired_sign_counts"] is None
