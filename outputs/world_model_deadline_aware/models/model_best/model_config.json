@@ -1,0 +1,31 @@
+{
+  "architecture": "GRU final hidden state -> tanh MLP -> residual SINR horizons",
+  "feature_dim": 8,
+  "feature_order": [
+    "measured_sinr",
+    "observed_load",
+    "elevation",
+    "distance",
+    "remaining_visibility",
+    "serving_indicator",
+    "candidate_indicator",
+    "measurement_available"
+  ],
+  "history_steps": 8,
+  "horizon_steps": 6,
+  "gru_hidden_dim": 64,
+  "mlp_hidden_dim": 64,
+  "learning_rate": 0.001,
+  "max_grad_norm": 5.0,
+  "seed": 7,
+  "best_epoch": 20,
+  "best_validation_mse": 7.513992725085427,
+  "normalization": {
+    "measured_sinr": "0 if unavailable, else clip((dB + 20.0) / 50.0, 0, 1)",
+    "observed_load": "clip(load / 2.0, 0, 1.5)",
+    "elevation": "clip((degrees + 10.0) / 100.0, 0, 1)",
+    "distance": "clip(metres / 3000000.0, 0, 2)",
+    "remaining_visibility": "clip(seconds / 600.0, 0, 1)",
+    "indicators": "binary 0 or 1"
+  }
+}

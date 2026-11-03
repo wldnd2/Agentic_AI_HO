@@ -1,0 +1,332 @@
+{
+  "config_path": "configs/default.yaml",
+  "coordination_mode": "none",
+  "environment_seed": 7,
+  "evaluation_action_seed": 7007,
+  "evaluation_deterministic": true,
+  "evaluation_episode_seeds": [
+    5001,
+    5002,
+    5003,
+    5004,
+    5005,
+    5006,
+    5007,
+    5008,
+    5009,
+    5010
+  ],
+  "history_recurrent_mode": "recurrent",
+  "override_paths": [
+    "configs/validation_agentic_challenge_v3.yaml",
+    "configs/deadline_aware_demand.yaml",
+    "configs/counterfactual_planner.yaml",
+    "configs/recurrent_mappo.yaml",
+    "configs/reasoning_aware_mappo.yaml",
+    "configs/hybrid_world_model.yaml",
+    "configs/pilot_mappo.yaml"
+  ],
+  "protocol_terminology": {
+    "COMMIT": "EXECUTE_CHO",
+    "COOLDOWN": "POST_HO_GUARD",
+    "scope": "3GPP-inspired system-level abstraction"
+  },
+  "reasoning_feature_mode": "confidence_aware",
+  "residual_checkpoint_path": "/Users/jeonjiwoong/Desktop/CHO_simul/outputs/world_model_deadline_aware/models/model_best/model.npz",
+  "residual_checkpoint_sha256": "1056bbc111068bc657aae1357fa02e0f8105ef78101b93f43bc42ad737614969",
+  "resolved_config": {
+    "agent_seed": 7,
+    "channel": {
+      "atmospheric_loss_db": 0.5,
+      "carrier_ghz": 2.0,
+      "implementation_loss_db": 3.0,
+      "interference_dbm": -108.0,
+      "noise_figure_db": 7.0,
+      "shadow_correlation": 0.95,
+      "shadow_std_db": 2.0,
+      "spectral_efficiency_cap": 6.0,
+      "ue_gain_dbi": 0.0
+    },
+    "constraint": {
+      "dual_learning_rate": 0.02,
+      "mu_initial": 0.0,
+      "mu_max": 10.0,
+      "outage_target": 0.1
+    },
+    "coordination": {
+      "initial_price": 0.0,
+      "pressure_clip": 10.0,
+      "price_learning_rate": 0.05,
+      "price_max": 5.0,
+      "reasoning_price_weight": 1.0
+    },
+    "environment": {
+      "candidate_count": 3,
+      "challenge_version": "v3",
+      "control_interval_s": 1.0,
+      "episode_steps": 420,
+      "max_queue_packets": 400,
+      "min_elevation_deg": 10.0,
+      "num_satellites": 6,
+      "num_ues": 12
+    },
+    "environment_seed": 7,
+    "evaluation": {
+      "episodes": 10
+    },
+    "events": [
+      {
+        "duration_steps_range": [
+          25,
+          55
+        ],
+        "satellite_choices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "severity_range": [
+          8.0,
+          15.0
+        ],
+        "start_step_range": [
+          35,
+          85
+        ],
+        "type": "blockage",
+        "ue_fraction_range": [
+          0.3,
+          0.65
+        ]
+      },
+      {
+        "duration_steps_range": [
+          35,
+          70
+        ],
+        "satellite_choices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "severity_range": [
+          0.45,
+          0.75
+        ],
+        "start_step_range": [
+          105,
+          165
+        ],
+        "type": "capacity_drop",
+        "ue_fraction_range": [
+          0.3,
+          0.7
+        ]
+      },
+      {
+        "duration_steps_range": [
+          35,
+          70
+        ],
+        "severity_range": [
+          1.35,
+          1.85
+        ],
+        "start_step_range": [
+          180,
+          245
+        ],
+        "type": "traffic_burst",
+        "ue_fraction_range": [
+          0.3,
+          0.7
+        ]
+      },
+      {
+        "duration_steps_range": [
+          25,
+          55
+        ],
+        "satellite_choices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "severity_range": [
+          8.0,
+          15.0
+        ],
+        "start_step_range": [
+          255,
+          320
+        ],
+        "type": "blockage",
+        "ue_fraction_range": [
+          0.3,
+          0.65
+        ]
+      },
+      {
+        "duration_steps_range": [
+          25,
+          50
+        ],
+        "satellite_choices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "severity_range": [
+          0.5,
+          0.8
+        ],
+        "start_step_range": [
+          325,
+          370
+        ],
+        "type": "capacity_drop",
+        "ue_fraction_range": [
+          0.3,
+          0.7
+        ]
+      }
+    ],
+    "mappo": {
+      "actor_hidden_dims": [
+        128,
+        128
+      ],
+      "actor_lr": 0.0003,
+      "bptt_steps": 16,
+      "checkpoint_interval": 25,
+      "clip_ratio": 0.2,
+      "critic_hidden_dims": [
+        256,
+        256
+      ],
+      "critic_lr": 0.001,
+      "entropy_coef": 0.01,
+      "gae_lambda": 0.95,
+      "gamma": 0.99,
+      "hidden_dim": 64,
+      "lr_anneal": {
+        "enabled": false,
+        "schedule": "linear"
+      },
+      "max_grad_norm": 0.5,
+      "minibatch_size": 128,
+      "reasoning_feature_mode": "confidence_aware",
+      "recurrent_hidden_dim": 128,
+      "rollout_steps": 128,
+      "target_kl": 0.03,
+      "training_iterations": 100,
+      "update_epochs": 5,
+      "use_constraint": false,
+      "use_coordination": false,
+      "use_memory": true,
+      "use_reasoning": true,
+      "value_coef": 0.5
+    },
+    "protocol": {
+      "cooldown_steps": 5,
+      "dwell_steps": 5,
+      "handover_base_success": 0.995,
+      "pingpong_window_steps": 20,
+      "preparation_resource_fraction": 0.01,
+      "preparation_steps": 1,
+      "switching_steps": 2,
+      "visibility_margin_steps": 1
+    },
+    "qos": {
+      "outage_service_ratio": 0.8
+    },
+    "reasoning": {
+      "discount": 0.95,
+      "horizon_steps": 6,
+      "planner_objective": "counterfactual",
+      "residual_model_path": "outputs/world_model_deadline_aware/models/model_best/model.npz",
+      "score_clip": 5.0,
+      "score_epsilon": 1e-08,
+      "world_model": "hybrid"
+    },
+    "reward": {
+      "epsilon": 1e-08,
+      "eta_handover": 0.02,
+      "eta_preparation": 0.2,
+      "lambda_resource": 0.25
+    },
+    "satellite": {
+      "altitude_km": 600.0,
+      "bandwidth_mhz": 4.0,
+      "capacity_scale": 0.7,
+      "inclination_deg": 53.0,
+      "orbital_period_s": 5800.0,
+      "tx_gain_dbi": 30.0,
+      "tx_power_dbm": 46.0
+    },
+    "scheduler": {
+      "epsilon_capacity": 1e-08,
+      "min_schedulable_spectral_efficiency": 0.0001
+    },
+    "seed": 7,
+    "traffic": {
+      "arrival_spread": 0.35,
+      "deadline_ms": 2000.0,
+      "mean_arrival_mbps": 2.0,
+      "packet_size_bits": 12000,
+      "qos_priority": 1.0,
+      "reliability_target": 0.99,
+      "required_rate_model": "deadline_aware"
+    },
+    "v3": {
+      "candidate_policy": "observed_current_sinr",
+      "coordination_demand": {
+        "preparation_weight": 1.0,
+        "serving_weight": 1.0
+      },
+      "latent_degradation": {
+        "degraded_duration_steps": [
+          8,
+          24
+        ],
+        "entry_probability_per_step": 0.006,
+        "initial_degraded_probability": 0.06,
+        "loss_db_range": [
+          7.0,
+          15.0
+        ],
+        "recovering_duration_steps": [
+          4,
+          10
+        ]
+      },
+      "observation": {
+        "lag_steps": 2,
+        "load_noise_std": 0.08,
+        "noise_correlation": 0.8,
+        "sinr_noise_std_db": 1.5
+      },
+      "preparation_admission": {
+        "max_concurrent_per_satellite": 2
+      },
+      "randomize_events": true
+    }
+  },
+  "rollout_steps": 128,
+  "total_training_interactions": 12800,
+  "training_iterations": 100,
+  "training_seed": 7,
+  "world_model_type": "hybrid"
+}
