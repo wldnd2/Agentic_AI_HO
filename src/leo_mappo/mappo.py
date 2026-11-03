@@ -207,8 +207,41 @@ class MAPPO:
         normalized_mu: float = 0.0,
         deterministic: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        logits, probabilities, new_hidden = self.recurrent_policy(
+            observations,
+            masks,
+            previous_actions,
+            previous_outcomes,
+            hidden_states,
+            reasoning_features,
+            price_features,
+            normalized_mu,
+        )
+        if deterministic:
+            actions = probabilities.argmax(axis=-1)
+        else:
+            actions = np.asarray(
+                [self.rng.choice(self.action_dim, p=row) for row in probabilities], dtype=np.int64
+            )
+        log_probabilities = np.log(
+            np.maximum(probabilities[np.arange(len(actions)), actions], 1e-12)
+        )
+        return actions, log_probabilities, new_hidden
+
+    def recurrent_policy(
+        self,
+        observations: np.ndarray,
+        masks: np.ndarray,
+        previous_actions: np.ndarray,
+        previous_outcomes: np.ndarray,
+        hidden_states: np.ndarray,
+        reasoning_features: np.ndarray | None = None,
+        price_features: np.ndarray | None = None,
+        normalized_mu: float = 0.0,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Return recurrent logits/probabilities without sampling an action."""
         if self.gru is None:
-            raise RuntimeError("act_recurrent() requires use_memory=true")
+            raise RuntimeError("recurrent_policy() requires use_memory=true")
         action_one_hot = np.zeros((len(observations), self.action_dim), dtype=np.float64)
         valid_previous = (previous_actions >= 0) & (previous_actions < self.action_dim)
         rows = np.flatnonzero(valid_previous)
@@ -238,16 +271,7 @@ class MAPPO:
             actor_parts.append(np.full((len(observations), 1), normalized_mu, dtype=np.float64))
         logits, _ = self.actor.forward(np.concatenate(actor_parts, axis=1))
         probabilities = masked_softmax(logits, masks)
-        if deterministic:
-            actions = probabilities.argmax(axis=-1)
-        else:
-            actions = np.asarray(
-                [self.rng.choice(self.action_dim, p=row) for row in probabilities], dtype=np.int64
-            )
-        log_probabilities = np.log(
-            np.maximum(probabilities[np.arange(len(actions)), actions], 1e-12)
-        )
-        return actions, log_probabilities, new_hidden
+        return logits, probabilities, new_hidden
 
     def value(self, global_states: np.ndarray) -> np.ndarray:
         values, _ = self.critic.forward(np.atleast_2d(global_states))
