@@ -7,7 +7,7 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -42,9 +42,10 @@ CANONICAL_CONTROL_COUNTERS = (
 def geometry_controller_step(
     env: LEOMobilityEnv,
     reasoner: LookaheadReasoner,
+    before_step: Callable[[LEOMobilityEnv, np.ndarray], None] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, ReasoningResult, StepOutput]:
     """Backward-compatible name for the shared predictive controller."""
-    return predictive_controller_step(env, reasoner)
+    return predictive_controller_step(env, reasoner, before_step=before_step)
 
 
 def build_predictive_reasoner(
@@ -90,6 +91,53 @@ def _p95(values: list[float]) -> float:
 
 def _safe_ratio(numerator: float, denominator: float) -> float:
     return float(numerator / denominator) if denominator > 0.0 else 0.0
+
+
+def prep_rejection_rate(rejected: float, requested: float) -> float:
+    """Return the diagnostic rejection fraction with a safe empty denominator."""
+    return _safe_ratio(rejected, requested)
+
+
+@dataclass(frozen=True)
+class PreparationContentionSnapshot:
+    request_counts_by_target: np.ndarray
+    total_requests: int
+    unique_targets: int
+    max_same_target_requests: int
+    collision_target_count: int
+    collision_request_count: int
+
+
+def analyze_preparation_contention(
+    env: LEOMobilityEnv,
+    actions: np.ndarray,
+) -> PreparationContentionSnapshot:
+    """Summarize the selected joint PREP action without changing it."""
+    request_counts = np.zeros(env.num_cells, dtype=np.int64)
+    for ue_id, action_value in enumerate(
+        np.asarray(actions, dtype=np.int64)
+    ):
+        action = int(action_value)
+        if not (
+            env.prepare_start
+            <= action
+            < env.prepare_start + env.candidate_count
+        ):
+            continue
+        slot = action - env.prepare_start
+        if slot < len(env.candidates[ue_id]):
+            target = int(env.candidates[ue_id][slot])
+            request_counts[target] += 1
+    active_targets = request_counts > 0
+    collision_targets = request_counts >= 2
+    return PreparationContentionSnapshot(
+        request_counts_by_target=request_counts,
+        total_requests=int(np.sum(request_counts)),
+        unique_targets=int(np.count_nonzero(active_targets)),
+        max_same_target_requests=int(request_counts.max(initial=0)),
+        collision_target_count=int(np.count_nonzero(collision_targets)),
+        collision_request_count=int(np.sum(request_counts[collision_targets])),
+    )
 
 
 def _current_primary_service_samples(
@@ -164,6 +212,18 @@ class EpisodeAccumulator:
     required_rate_samples: list[float] = field(default_factory=list)
     potential_insufficient_samples: list[float] = field(default_factory=list)
     service_deficit_samples: list[float] = field(default_factory=list)
+    active_prep_epochs: int = 0
+    prep_request_total: int = 0
+    prep_unique_target_samples: list[float] = field(default_factory=list)
+    prep_max_same_target_samples: list[float] = field(default_factory=list)
+    prep_collision_target_total: int = 0
+    prep_collision_request_total: int = 0
+    prep_capacity_observed_epochs: int = 0
+    prep_available_slots_total: int = 0
+    prep_requested_minus_available_total: int = 0
+    prep_excess_request_total: int = 0
+    prep_oversubscribed_target_total: int = 0
+    prep_oversubscribed_request_total: int = 0
     handover_completion_times: list[list[float]] = field(init=False)
     steps: int = 0
 
@@ -181,13 +241,56 @@ class EpisodeAccumulator:
             self.potential_insufficient_samples.append(float(insufficient))
             self.service_deficit_samples.append(float(deficit))
 
+    def record_preparation_contention(
+        self,
+        snapshot: PreparationContentionSnapshot,
+        available_slots_by_target: np.ndarray | None,
+    ) -> None:
+        self.prep_request_total += snapshot.total_requests
+        self.prep_collision_target_total += snapshot.collision_target_count
+        self.prep_collision_request_total += snapshot.collision_request_count
+        if snapshot.total_requests <= 0:
+            return
+        self.active_prep_epochs += 1
+        self.prep_unique_target_samples.append(float(snapshot.unique_targets))
+        self.prep_max_same_target_samples.append(
+            float(snapshot.max_same_target_requests)
+        )
+        if available_slots_by_target is None:
+            return
+        available = np.asarray(available_slots_by_target, dtype=np.int64)
+        counts = snapshot.request_counts_by_target
+        requested_targets = counts > 0
+        if available.shape != counts.shape or np.any(available[requested_targets] < 0):
+            return
+        requested = counts[requested_targets]
+        target_capacity = available[requested_targets]
+        gaps = requested - target_capacity
+        oversubscribed = gaps > 0
+        self.prep_capacity_observed_epochs += 1
+        self.prep_available_slots_total += int(np.sum(target_capacity))
+        self.prep_requested_minus_available_total += int(np.sum(gaps))
+        self.prep_excess_request_total += int(np.sum(np.maximum(gaps, 0)))
+        self.prep_oversubscribed_target_total += int(
+            np.count_nonzero(oversubscribed)
+        )
+        self.prep_oversubscribed_request_total += int(
+            np.sum(requested[oversubscribed])
+        )
+
     def record_step(
         self,
         env: LEOMobilityEnv,
         actions: np.ndarray,
         output: StepOutput,
+        contention: PreparationContentionSnapshot | None = None,
     ) -> None:
         self.steps += 1
+        if contention is not None:
+            self.record_preparation_contention(
+                contention,
+                getattr(env, "last_preparation_available_slots", None),
+            )
         for action in np.asarray(actions, dtype=np.int64):
             value = int(action)
             if value == 0:
@@ -220,6 +323,56 @@ class EpisodeAccumulator:
                 else 0.0
             )
             self.hol_deadline_samples.append(float(ratio))
+
+    def preparation_contention_metrics(self) -> dict[str, float | int]:
+        return {
+            "active_prep_epochs": self.active_prep_epochs,
+            "diagnostic_prep_request_count": self.prep_request_total,
+            "same_target_collision_prep_request_count": (
+                self.prep_collision_request_total
+            ),
+            "mean_prep_requests_per_active_prep_epoch": _safe_ratio(
+                float(self.prep_request_total), float(self.active_prep_epochs)
+            ),
+            "mean_unique_prep_targets_per_active_prep_epoch": _mean(
+                self.prep_unique_target_samples
+            ),
+            "mean_max_same_target_prep_requests": _mean(
+                self.prep_max_same_target_samples
+            ),
+            "p95_max_same_target_prep_requests": _p95(
+                self.prep_max_same_target_samples
+            ),
+            "fraction_prep_requests_in_same_target_collision": _safe_ratio(
+                float(self.prep_collision_request_total),
+                float(self.prep_request_total),
+            ),
+            "mean_same_target_collision_satellites_per_epoch": _safe_ratio(
+                float(self.prep_collision_target_total), float(self.steps)
+            ),
+            "prep_admission_capacity_observed_epochs": (
+                self.prep_capacity_observed_epochs
+            ),
+            "mean_available_prep_admissions_on_requested_targets": _safe_ratio(
+                float(self.prep_available_slots_total),
+                float(self.prep_capacity_observed_epochs),
+            ),
+            "mean_requested_minus_available_prep_capacity": _safe_ratio(
+                float(self.prep_requested_minus_available_total),
+                float(self.prep_capacity_observed_epochs),
+            ),
+            "mean_excess_prep_requests": _safe_ratio(
+                float(self.prep_excess_request_total), float(self.steps)
+            ),
+            "total_excess_prep_requests": self.prep_excess_request_total,
+            "fraction_prep_requests_to_oversubscribed_targets": _safe_ratio(
+                float(self.prep_oversubscribed_request_total),
+                float(self.prep_request_total),
+            ),
+            "mean_oversubscribed_prep_targets_per_epoch": _safe_ratio(
+                float(self.prep_oversubscribed_target_total), float(self.steps)
+            ),
+        }
 
     def finalize(
         self,
@@ -293,6 +446,10 @@ class EpisodeAccumulator:
             "rejected_prep_requests": self.control_counters[
                 "preparation_rejected"
             ],
+            "prep_rejection_rate": prep_rejection_rate(
+                self.control_counters["preparation_rejected"],
+                float(self.requested_actions["PREP"]),
+            ),
             "prepared_link_losses": self.control_counters[
                 "secondary_link_lost"
             ],
@@ -327,6 +484,7 @@ class EpisodeAccumulator:
             "mean_primary_service_deficit": _mean(
                 self.service_deficit_samples
             ),
+            **self.preparation_contention_metrics(),
         }
         for state in PROTOCOL_STATES:
             count = self.state_counts[state]
@@ -376,6 +534,7 @@ HANDOVER_CONTROL_FIELDS = (
     "fraction_ues_with_handover",
     "mean_time_between_completed_handovers_s",
     "mean_target_serving_duration_after_handover_s",
+    "prep_rejection_rate",
 )
 PROTOCOL_STATE_FIELDS = tuple(
     field_name
@@ -392,6 +551,24 @@ SERVICE_DEMAND_FIELDS = (
     "fraction_potential_service_insufficient",
     "mean_primary_service_deficit",
 )
+PREPARATION_CONTENTION_FIELDS = (
+    "active_prep_epochs",
+    "diagnostic_prep_request_count",
+    "same_target_collision_prep_request_count",
+    "mean_prep_requests_per_active_prep_epoch",
+    "mean_unique_prep_targets_per_active_prep_epoch",
+    "mean_max_same_target_prep_requests",
+    "p95_max_same_target_prep_requests",
+    "fraction_prep_requests_in_same_target_collision",
+    "mean_same_target_collision_satellites_per_epoch",
+    "prep_admission_capacity_observed_epochs",
+    "mean_available_prep_admissions_on_requested_targets",
+    "mean_requested_minus_available_prep_capacity",
+    "mean_excess_prep_requests",
+    "total_excess_prep_requests",
+    "fraction_prep_requests_to_oversubscribed_targets",
+    "mean_oversubscribed_prep_targets_per_epoch",
+)
 
 
 def evaluate_episode(
@@ -407,8 +584,17 @@ def evaluate_episode(
         accumulator.record_service_samples(
             _current_primary_service_samples(env, reasoner)
         )
-        _, actions, _, output = geometry_controller_step(env, reasoner)
-        accumulator.record_step(env, actions, output)
+        contention: list[PreparationContentionSnapshot] = []
+        _, actions, _, output = geometry_controller_step(
+            env,
+            reasoner,
+            before_step=lambda current_env, selected_actions: contention.append(
+                analyze_preparation_contention(current_env, selected_actions)
+            ),
+        )
+        if len(contention) != 1:
+            raise RuntimeError("controller did not capture PREP contention once")
+        accumulator.record_step(env, actions, output, contention[0])
         done = bool(output.done)
     return accumulator.finalize(env, episode, episode_seed)
 
@@ -473,6 +659,14 @@ def build_summary(
         "planner_objective": reasoner.planner_objective,
         "required_rate_model": required_rate_model,
         "reasoner_controls_environment": True,
+        "use_coordination": reasoner.use_coordination,
+        "use_constraint": reasoner.use_constraint,
+        "outage_dual_mu": 0.0,
+        "control_abstraction": (
+            "3GPP-inspired system-level CHO abstraction; COMMIT = "
+            "EXECUTE_CHO and COOLDOWN = POST_HO_GUARD, not literal "
+            "message-level RRC states/actions"
+        ),
     }
     if world_model == "hybrid":
         if residual_model is None:
@@ -506,6 +700,9 @@ def build_summary(
         ),
         "service_demand": _summary_section(
             episode_rows, SERVICE_DEMAND_FIELDS
+        ),
+        "preparation_contention": _summary_section(
+            episode_rows, PREPARATION_CONTENTION_FIELDS
         ),
     }
 

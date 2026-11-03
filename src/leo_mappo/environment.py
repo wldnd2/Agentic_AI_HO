@@ -165,6 +165,12 @@ class LEOMobilityEnv:
         self.preparation_requests_by_ue = np.zeros(self.num_agents, dtype=np.int64)
         self.preparation_admissions_by_ue = np.zeros(self.num_agents, dtype=np.int64)
         self.preparation_rejections_by_ue = np.zeros(self.num_agents, dtype=np.int64)
+        # Diagnostic snapshot populated from the canonical V3 admission path
+        # immediately before new PREP requests are resolved. A negative value
+        # means no canonical capacity observation was available for that cell.
+        self.last_preparation_available_slots = np.full(
+            self.num_cells, -1, dtype=np.int64
+        )
 
     @property
     def prepare_start(self) -> int:
@@ -388,6 +394,7 @@ class LEOMobilityEnv:
         self.preparation_requests_by_ue.fill(0)
         self.preparation_admissions_by_ue.fill(0)
         self.preparation_rejections_by_ue.fill(0)
+        self.last_preparation_available_slots.fill(-1)
         self._reset_v3_runtime()
         for satellite in self.satellites:
             satellite.capacity_multiplier = 1.0
@@ -680,6 +687,7 @@ class LEOMobilityEnv:
         }
         valid_actions = np.full(self.num_agents, int(Action.STAY), dtype=np.int64)
         self.last_preparation_intent_count.fill(0.0)
+        self.last_preparation_available_slots.fill(-1)
         self._last_handover_started.fill(0.0)
         for ue, raw_action in zip(self.ues, actions):
             action = int(raw_action)
@@ -758,6 +766,7 @@ class LEOMobilityEnv:
                     else max(0, int(np.floor((1.0 + 1e-12 - reservation[target]) / rho)))
                 )
                 available_slots = min(control_slots, physical_slots)
+                self.last_preparation_available_slots[target] = available_slots
                 if len(requesters) <= available_slots:
                     admitted_ids = {ue.ue_id for ue in requesters}
                 elif available_slots > 0:

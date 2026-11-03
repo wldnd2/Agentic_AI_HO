@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -42,11 +42,14 @@ def select_greedy_feasible_actions(
 def predictive_controller_step(
     env: LEOMobilityEnv,
     reasoner: LookaheadReasoner,
+    before_step: Callable[[LEOMobilityEnv, np.ndarray], None] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, ReasoningResult, StepOutput]:
     """Analyze once and execute the feasible raw-cost argmin joint action."""
     masks = env.action_masks()
     result = reasoner.analyze(env, masks)
     actions = select_greedy_feasible_actions(result.raw_costs, masks)
+    if before_step is not None:
+        before_step(env, actions.copy())
     output = env.step(actions)
     return masks, actions, result, output
 

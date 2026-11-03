@@ -368,6 +368,12 @@ def _preferred_metrics(
     ue_id: int,
     action: int,
 ) -> dict[str, float]:
+    def counterfactual_component(attribute: str) -> float:
+        values = getattr(result, attribute)
+        if values is None:
+            return 0.0
+        return float(values[ue_id, action])
+
     return {
         "raw_cost": float(result.raw_costs[ue_id, action]),
         "total_cost": float(result.total_costs[ue_id, action]),
@@ -383,7 +389,34 @@ def _preferred_metrics(
         "control_cost": float(result.predicted_control_costs[ue_id, action]),
         "coordination_cost": float(result.coordination_costs[ue_id, action]),
         "service_cost": float(result.service_costs[ue_id, action]),
+        "reliability_cost": float(result.reliability_costs[ue_id, action]),
+        "counterfactual_service_contribution": counterfactual_component(
+            "delta_service_cost"
+        ),
+        "counterfactual_reliability_contribution": counterfactual_component(
+            "delta_reliability_cost"
+        ),
+        "counterfactual_control_contribution": counterfactual_component(
+            "delta_control_cost"
+        ),
+        "counterfactual_coordination_contribution": counterfactual_component(
+            "delta_coordination_cost"
+        ),
     }
+
+
+def _observed_load_for_cell(
+    env: LEOMobilityEnv,
+    ue_id: int,
+    cell_id: int | None,
+) -> float | None:
+    if cell_id is None or cell_id < 0:
+        return None
+    return float(
+        env.observed_load[ue_id, cell_id]
+        if env.v3_enabled
+        else env.last_pressure[cell_id]
+    )
 
 
 def _decision_continuation_diagnostics(
@@ -520,6 +553,10 @@ def _decision_rows(
             geometry_result, ue_id, geometry_action
         )
         hybrid_metrics = _preferred_metrics(hybrid_result, ue_id, hybrid_action)
+        geometry_target = _preferred_target_cell(
+            env, ue_id, geometry_action
+        )
+        hybrid_target = _preferred_target_cell(env, ue_id, hybrid_action)
         geometry_continuations = _decision_continuation_diagnostics(
             env,
             geometry_result,
@@ -553,6 +590,30 @@ def _decision_rows(
             "hybrid_preferred_category": hybrid_category,
             "hybrid_preferred_target_cell_id": _preferred_target_cell(
                 env, ue_id, hybrid_action
+            ),
+            "queue_packets": int(ue.queue_packets),
+            "hol_delay_s": float(ue.head_of_line_delay_s),
+            "serving_cell_id": (
+                -1 if ue.primary_cell is None else int(ue.primary_cell)
+            ),
+            "observed_serving_load": _observed_load_for_cell(
+                env, ue_id, ue.primary_cell
+            ),
+            "geometry_selected_target_observed_load": _observed_load_for_cell(
+                env, ue_id, geometry_target
+            ),
+            "hybrid_selected_target_observed_load": _observed_load_for_cell(
+                env, ue_id, hybrid_target
+            ),
+            "geometry_selected_target_remaining_visibility_s": (
+                float(env.remaining_visibility[ue_id, geometry_target])
+                if geometry_target >= 0
+                else None
+            ),
+            "hybrid_selected_target_remaining_visibility_s": (
+                float(env.remaining_visibility[ue_id, hybrid_target])
+                if hybrid_target >= 0
+                else None
             ),
             "preferred_action_differs": int(geometry_action != hybrid_action),
             "action_difference_type": _action_difference_type(
@@ -997,6 +1058,146 @@ def _decision_margin_analysis(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "hybrid_cost_of_geometry_action_minus_best"
         ),
     }
+
+
+def _divergent_margin_distribution(
+    rows: list[dict[str, Any]],
+    field: str,
+) -> dict[str, float | int]:
+    values = np.asarray([float(row[field]) for row in rows], dtype=np.float64)
+    if values.size == 0:
+        return {
+            "count": 0,
+            "mean": 0.0,
+            "median": 0.0,
+            "p05": 0.0,
+            "p95": 0.0,
+            "fraction_le_1e-6": 0.0,
+            "fraction_le_1e-5": 0.0,
+            "fraction_le_1e-4": 0.0,
+            "fraction_le_1e-3": 0.0,
+        }
+    return {
+        "count": int(values.size),
+        "mean": float(np.mean(values)),
+        "median": float(np.median(values)),
+        "p05": float(np.percentile(values, 5)),
+        "p95": float(np.percentile(values, 95)),
+        "fraction_le_1e-6": float(np.mean(values <= 1e-6)),
+        "fraction_le_1e-5": float(np.mean(values <= 1e-5)),
+        "fraction_le_1e-4": float(np.mean(values <= 1e-4)),
+        "fraction_le_1e-3": float(np.mean(values <= 1e-3)),
+    }
+
+
+def _is_prep_target_only_divergence(row: dict[str, Any]) -> bool:
+    return bool(
+        row["preferred_action_differs"]
+        and row["geometry_preferred_category"] == "PREP"
+        and row["hybrid_preferred_category"] == "PREP"
+        and int(row["geometry_preferred_target_cell_id"])
+        != int(row["hybrid_preferred_target_cell_id"])
+    )
+
+
+def divergent_decision_summary(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    divergent = [row for row in rows if bool(row["preferred_action_differs"])]
+    category_changes = sum(
+        int(
+            row["geometry_preferred_category"]
+            != row["hybrid_preferred_category"]
+        )
+        for row in divergent
+    )
+    prep_target_only = sum(
+        int(_is_prep_target_only_divergence(row)) for row in divergent
+    )
+    return {
+        "divergent_decision_count": len(divergent),
+        "divergent_decision_fraction": (
+            len(divergent) / len(rows) if rows else 0.0
+        ),
+        "category_change_count": category_changes,
+        "prep_target_only_change_count": prep_target_only,
+        "geometry_decision_margins": _divergent_margin_distribution(
+            divergent, "geometry_decision_margin"
+        ),
+        "hybrid_decision_margins": _divergent_margin_distribution(
+            divergent, "hybrid_decision_margin"
+        ),
+    }
+
+
+def build_divergent_decision_rows(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    for row in rows:
+        if not bool(row["preferred_action_differs"]):
+            continue
+        record: dict[str, Any] = {
+            "episode_seed": row.get("episode_seed", -1),
+            "episode_id": row["episode"],
+            "time_index": row["timestep"],
+            "ue_id": row["ue_id"],
+            "protocol_state": row["protocol_state"],
+            "category_change": int(
+                row["geometry_preferred_category"]
+                != row["hybrid_preferred_category"]
+            ),
+            "prep_target_only_change": int(
+                _is_prep_target_only_divergence(row)
+            ),
+            "current_required_rate_bps": row.get("current_required_rate_bps"),
+            "queue_packets": row.get("queue_packets"),
+            "hol_delay_s": row.get("hol_delay_s"),
+            "serving_cell_id": row.get("serving_cell_id"),
+            "observed_serving_load": row.get("observed_serving_load"),
+        }
+        for model in ("geometry", "hybrid"):
+            record.update(
+                {
+                    f"{model}_selected_action_index": row[
+                        f"{model}_preferred_action"
+                    ],
+                    f"{model}_selected_action_category": row[
+                        f"{model}_preferred_category"
+                    ],
+                    f"{model}_selected_prep_target_cell": row[
+                        f"{model}_preferred_target_cell_id"
+                    ],
+                    f"{model}_selected_raw_cost": row[
+                        f"{model}_preferred_raw_cost"
+                    ],
+                    f"{model}_second_best_feasible_raw_cost": row[
+                        f"{model}_second_best_cost"
+                    ],
+                    f"{model}_decision_margin": row[
+                        f"{model}_decision_margin"
+                    ],
+                    f"{model}_selected_target_observed_load": row.get(
+                        f"{model}_selected_target_observed_load"
+                    ),
+                    f"{model}_selected_target_remaining_visibility_s": row.get(
+                        f"{model}_selected_target_remaining_visibility_s"
+                    ),
+                }
+            )
+            for component in (
+                "service",
+                "reliability",
+                "control",
+                "coordination",
+            ):
+                record[
+                    f"{model}_{component}_contribution"
+                ] = row.get(
+                    f"{model}_preferred_counterfactual_{component}_contribution"
+                )
+        output.append(record)
+    return output
 
 
 _SERVICE_DEFICIT_TOLERANCE = 1e-12
@@ -1837,6 +2038,11 @@ def build_summary(
             "shared_coordination_prices": coordination_price_mode,
             "source": outage_dual_source,
             "shared_outage_dual_mu": outage_dual_mu,
+            "control_abstraction": (
+                "3GPP-inspired system-level CHO abstraction; COMMIT = "
+                "EXECUTE_CHO and COOLDOWN = POST_HO_GUARD, not literal "
+                "message-level RRC states/actions"
+            ),
         },
         "decision_metrics": {
             "total_ue_decision_points": total,
@@ -1888,6 +2094,9 @@ def build_summary(
         "action_transition_matrix": _action_transition_matrix(decision_rows),
         "exact_action_divergence": _exact_action_divergence(decision_rows),
         "decision_margin_analysis": _decision_margin_analysis(decision_rows),
+        "divergent_decision_summary": divergent_decision_summary(
+            decision_rows
+        ),
         "service_deficit_audit": _service_deficit_audit(decision_rows),
         "divergence_vs_agreement": _divergence_vs_agreement(decision_rows),
         "prep_specific_analysis": _prep_specific_analysis(decision_rows),
@@ -1947,6 +2156,10 @@ def write_outputs(
     destination.mkdir(parents=True, exist_ok=True)
     _write_csv(destination / "decision_comparison.csv", decision_rows)
     _write_csv(destination / "prediction_comparison.csv", prediction_rows)
+    _write_csv(
+        destination / "divergent_decisions.csv",
+        build_divergent_decision_rows(decision_rows),
+    )
     _write_csv(
         destination / "top_divergence_examples.csv",
         build_top_divergence_examples(decision_rows),
@@ -2102,6 +2315,7 @@ def run(args: argparse.Namespace) -> None:
                 row["behavior_action_category"] = _action_category(
                     env, behavior_action
                 )
+                row["episode_seed"] = args.seed + episode
             decisions.extend(step_decisions)
             predictions.extend(step_predictions)
             if price_coordinator is not None:

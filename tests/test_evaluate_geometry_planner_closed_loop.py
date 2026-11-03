@@ -220,6 +220,7 @@ def test_hybrid_summary_records_checkpoint_provenance(tmp_path: Path) -> None:
         + evaluator.HANDOVER_CONTROL_FIELDS
         + evaluator.PROTOCOL_STATE_FIELDS
         + evaluator.SERVICE_DEMAND_FIELDS
+        + evaluator.PREPARATION_CONTENTION_FIELDS
     )
     for field_name in fields:
         row[field_name] = [] if field_name == "handovers_per_ue" else 0.0
