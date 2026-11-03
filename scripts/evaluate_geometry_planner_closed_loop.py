@@ -13,6 +13,10 @@ import numpy as np
 
 from leo_mappo.config import load_config
 from leo_mappo.environment import LEOMobilityEnv, StepOutput
+from leo_mappo.evaluation_diagnostics import (
+    PreparationContentionSnapshot,
+    analyze_preparation_contention,
+)
 from leo_mappo.hybrid_world_model import HybridWorldModel
 from leo_mappo.planner import ReasoningResult
 from leo_mappo.predictive_control import (
@@ -96,48 +100,6 @@ def _safe_ratio(numerator: float, denominator: float) -> float:
 def prep_rejection_rate(rejected: float, requested: float) -> float:
     """Return the diagnostic rejection fraction with a safe empty denominator."""
     return _safe_ratio(rejected, requested)
-
-
-@dataclass(frozen=True)
-class PreparationContentionSnapshot:
-    request_counts_by_target: np.ndarray
-    total_requests: int
-    unique_targets: int
-    max_same_target_requests: int
-    collision_target_count: int
-    collision_request_count: int
-
-
-def analyze_preparation_contention(
-    env: LEOMobilityEnv,
-    actions: np.ndarray,
-) -> PreparationContentionSnapshot:
-    """Summarize the selected joint PREP action without changing it."""
-    request_counts = np.zeros(env.num_cells, dtype=np.int64)
-    for ue_id, action_value in enumerate(
-        np.asarray(actions, dtype=np.int64)
-    ):
-        action = int(action_value)
-        if not (
-            env.prepare_start
-            <= action
-            < env.prepare_start + env.candidate_count
-        ):
-            continue
-        slot = action - env.prepare_start
-        if slot < len(env.candidates[ue_id]):
-            target = int(env.candidates[ue_id][slot])
-            request_counts[target] += 1
-    active_targets = request_counts > 0
-    collision_targets = request_counts >= 2
-    return PreparationContentionSnapshot(
-        request_counts_by_target=request_counts,
-        total_requests=int(np.sum(request_counts)),
-        unique_targets=int(np.count_nonzero(active_targets)),
-        max_same_target_requests=int(request_counts.max(initial=0)),
-        collision_target_count=int(np.count_nonzero(collision_targets)),
-        collision_request_count=int(np.sum(request_counts[collision_targets])),
-    )
 
 
 def _current_primary_service_samples(

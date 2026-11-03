@@ -1,0 +1,6 @@
+mappo:
+  training_iterations: 100
+  checkpoint_interval: 25
+
+evaluation:
+  episodes: 10

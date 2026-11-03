@@ -13,7 +13,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from leo_mappo import LEOMobilityEnv, MAPPO, load_config
-from leo_mappo.runner import RolloutRunner, evaluate_policy
+from leo_mappo.runner import (
+    RolloutRunner,
+    evaluate_policy,
+    evaluation_episode_seeds,
+)
 
 
 def _rolling_mean(values: list[float], window: int = 50) -> list[float]:
@@ -36,6 +40,21 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def resolve_evaluation_settings(
+    config: dict[str, Any], args: argparse.Namespace
+) -> tuple[int, int]:
+    evaluation_config = config.get("evaluation", {})
+    configured_episodes = int(evaluation_config.get("episodes", 3))
+    configured_seed_base = int(evaluation_config.get("seed_base", 10_000))
+    cli_episodes = getattr(args, "eval_episodes", None)
+    cli_seed_base = getattr(args, "evaluation_seed_base", None)
+    episodes = configured_episodes if cli_episodes is None else int(cli_episodes)
+    seed_base = configured_seed_base if cli_seed_base is None else int(cli_seed_base)
+    if episodes <= 0:
+        raise ValueError("evaluation episodes must be positive")
+    return episodes, seed_base
 
 
 def build_checkpoint_metadata(
@@ -66,6 +85,11 @@ def build_checkpoint_metadata(
             )
         residual_sha256 = _sha256(residual_path)
     override_paths = [] if args.override is None else [str(path) for path in args.override]
+    evaluation_episodes, evaluation_seed_base = resolve_evaluation_settings(
+        config, args
+    )
+    training_iterations = int(mappo.get("training_iterations", 0))
+    rollout_steps = int(mappo.get("rollout_steps", 0))
     return {
         "world_model_type": world_model_type,
         "residual_checkpoint_path": (
@@ -91,6 +115,14 @@ def build_checkpoint_metadata(
         "training_seed": int(config.get("agent_seed", config.get("seed", 0))),
         "environment_seed": int(
             config.get("environment_seed", config.get("seed", 0))
+        ),
+        "training_iterations": training_iterations,
+        "rollout_steps": rollout_steps,
+        "total_training_interactions": training_iterations * rollout_steps,
+        "evaluation_deterministic": True,
+        "evaluation_action_seed": getattr(args, "evaluation_action_seed", None),
+        "evaluation_episode_seeds": list(
+            evaluation_episode_seeds(evaluation_episodes, evaluation_seed_base)
         ),
         "protocol_terminology": {
             "COMMIT": "EXECUTE_CHO",
@@ -131,6 +163,9 @@ def train(args: argparse.Namespace) -> None:
     if checkpoint_interval <= 0:
         raise ValueError("mappo.checkpoint_interval must be positive")
     total_iterations = int(config["mappo"]["training_iterations"])
+    evaluation_episodes, evaluation_seed_base = resolve_evaluation_settings(
+        config, args
+    )
     history = []
     for iteration in range(total_iterations):
         actor_lr, critic_lr = agent.set_training_iteration(iteration, total_iterations)
@@ -181,8 +216,9 @@ def train(args: argparse.Namespace) -> None:
     evaluation = evaluate_policy(
         env,
         agent,
-        episodes=args.eval_episodes,
+        episodes=evaluation_episodes,
         evaluation_action_seed=args.evaluation_action_seed,
+        evaluation_seed_base=evaluation_seed_base,
     )
     with (output_dir / "evaluation.json").open("w", encoding="utf-8") as handle:
         json.dump(evaluation, handle, indent=2)
@@ -197,6 +233,7 @@ def train(args: argparse.Namespace) -> None:
             episodes=args.stochastic_eval_episodes,
             deterministic=False,
             evaluation_action_seed=args.evaluation_action_seed,
+            evaluation_seed_base=evaluation_seed_base,
         )
         with (output_dir / "evaluation_stochastic.json").open("w", encoding="utf-8") as handle:
             json.dump(stochastic_evaluation, handle, indent=2)
@@ -314,13 +351,17 @@ def evaluate(args: argparse.Namespace) -> None:
         eta_handover=float(env.reward_cfg["eta_handover"]),
     )
     agent.load(args.weights)
+    evaluation_episodes, evaluation_seed_base = resolve_evaluation_settings(
+        config, args
+    )
     print(
         json.dumps(
             evaluate_policy(
                 env,
                 agent,
-                episodes=args.eval_episodes,
+                episodes=evaluation_episodes,
                 evaluation_action_seed=args.evaluation_action_seed,
+                evaluation_seed_base=evaluation_seed_base,
             ),
             indent=2,
         )
@@ -339,10 +380,11 @@ def build_parser() -> argparse.ArgumentParser:
             default=None,
             help="Optional scenario YAML; repeat to deep-merge files in command-line order",
         )
-        sub.add_argument("--eval-episodes", type=int, default=3)
+        sub.add_argument("--eval-episodes", type=int, default=None)
         sub.add_argument("--environment-seed", type=int, default=None)
         sub.add_argument("--agent-seed", type=int, default=None)
         sub.add_argument("--evaluation-action-seed", type=int, default=None)
+        sub.add_argument("--evaluation-seed-base", type=int, default=None)
     train_parser = subparsers.choices["train"]
     train_parser.add_argument("--iterations", type=int, default=None)
     train_parser.add_argument("--output", default="outputs/default_run")

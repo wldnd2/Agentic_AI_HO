@@ -11,6 +11,10 @@ from .coordinator import (
     compute_training_reward,
 )
 from .environment import LEOMobilityEnv
+from .evaluation_diagnostics import (
+    PolicyEvaluationDiagnostics,
+    analyze_preparation_contention,
+)
 from .mappo import MAPPO
 from .reasoning import (
     LookaheadReasoner,
@@ -56,6 +60,16 @@ def summarize_metrics(totals: dict[str, float], steps: int, epsilon: float = 1e-
         totals.get("prepared_duration_count", 0.0) + epsilon
     )
     return result
+
+
+def evaluation_episode_seeds(
+    episodes: int, evaluation_seed_base: int = 10_000
+) -> tuple[int, ...]:
+    if episodes <= 0:
+        raise ValueError("evaluation episodes must be positive")
+    return tuple(
+        int(evaluation_seed_base) + episode for episode in range(int(episodes))
+    )
 
 
 class RolloutRunner:
@@ -385,6 +399,7 @@ def _evaluate_policy_impl(
     agent: MAPPO,
     episodes: int = 5,
     deterministic: bool = True,
+    evaluation_seed_base: int = 10_000,
 ) -> dict[str, float]:
     totals: dict[str, float] = defaultdict(float)
     total_steps = 0
@@ -407,8 +422,12 @@ def _evaluate_policy_impl(
     reliability_controller = ReliabilityDualController(
         env.config.get("constraint", {}), initial_override=agent.outage_dual_mu
     )
-    for episode in range(episodes):
-        observations, _, masks = env.reset(seed=10_000 + episode)
+    evaluation_diagnostics = PolicyEvaluationDiagnostics(
+        interval_s=env.interval_s,
+        packet_size_bits=int(env.traffic_cfg["packet_size_bits"]),
+    )
+    for episode_seed in evaluation_episode_seeds(episodes, evaluation_seed_base):
+        observations, _, masks = env.reset(seed=episode_seed)
         if price_coordinator is not None:
             price_coordinator.reset()
         hidden_states = np.zeros(
@@ -465,7 +484,9 @@ def _evaluate_policy_impl(
                 actions, _ = agent.act(observations, masks, deterministic=deterministic)
                 new_hidden = hidden_states
             decision_masks = masks
+            contention = analyze_preparation_contention(env, actions)
             output = env.step(actions)
+            evaluation_diagnostics.record_step(env, actions, output, contention)
             if agent.use_constraint:
                 reward, constraint_penalty = compute_training_reward(
                     output.info["service_deficit"],
@@ -614,6 +635,7 @@ def _evaluate_policy_impl(
             observations, masks, done = output.observations, output.action_masks, output.done
             total_steps += 1
     result = summarize_metrics(totals, total_steps)
+    result.update(evaluation_diagnostics.metrics())
     gap = result["outage_ratio"] - reliability_controller.outage_target
     result["outage_constraint_gap"] = gap
     result["constraint_satisfied"] = float(gap <= 0.0)
@@ -627,6 +649,7 @@ def evaluate_policy(
     episodes: int = 5,
     deterministic: bool = True,
     evaluation_action_seed: int | None = None,
+    evaluation_seed_base: int = 10_000,
 ) -> dict[str, float]:
     """Evaluate with an optional action RNG independent of initialization/training.
 
@@ -634,10 +657,22 @@ def evaluate_policy(
     a temporary generator and restores the exact original generator afterward.
     """
     if evaluation_action_seed is None:
-        return _evaluate_policy_impl(env, agent, episodes, deterministic)
+        return _evaluate_policy_impl(
+            env,
+            agent,
+            episodes,
+            deterministic,
+            evaluation_seed_base,
+        )
     original_rng = agent.rng
     agent.rng = np.random.default_rng(int(evaluation_action_seed))
     try:
-        return _evaluate_policy_impl(env, agent, episodes, deterministic)
+        return _evaluate_policy_impl(
+            env,
+            agent,
+            episodes,
+            deterministic,
+            evaluation_seed_base,
+        )
     finally:
         agent.rng = original_rng
