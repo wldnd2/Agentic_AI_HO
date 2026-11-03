@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 from .networks import Adam, GRU, MLP, masked_softmax
+from .reasoning import reasoning_feature_dim
 
 
 def _group_recurrent_chunks(
@@ -60,6 +61,14 @@ class MAPPO:
         self.rng = np.random.default_rng(seed)
         self.use_memory = bool(config.get("use_memory", False))
         self.use_reasoning = bool(config.get("use_reasoning", False))
+        self.reasoning_feature_mode = str(
+            config.get("reasoning_feature_mode", "legacy")
+        ).lower()
+        self.reasoning_feature_dim = (
+            reasoning_feature_dim(action_dim, self.reasoning_feature_mode)
+            if self.use_reasoning
+            else 0
+        )
         self.use_coordination = bool(config.get("use_coordination", False))
         self.use_constraint = bool(config.get("use_constraint", False))
         if self.use_reasoning and not self.use_memory:
@@ -128,7 +137,7 @@ class MAPPO:
             self.gru = GRU(obs_dim + action_dim + self.outcome_dim, self.recurrent_hidden_dim, self.rng)
             actor_input_dim += self.recurrent_hidden_dim
             if self.use_reasoning:
-                actor_input_dim += action_dim
+                actor_input_dim += self.reasoning_feature_dim
             actor_input_dim += self.price_feature_dim
             if self.use_constraint:
                 actor_input_dim += 1
@@ -210,6 +219,14 @@ class MAPPO:
         if self.use_reasoning:
             if reasoning_features is None:
                 raise ValueError("reasoning_features are required when use_reasoning=true")
+            if reasoning_features.shape != (
+                len(observations),
+                self.reasoning_feature_dim,
+            ):
+                raise ValueError(
+                    "reasoning_features shape does not match the configured "
+                    "reasoning feature mode"
+                )
             actor_parts.append(reasoning_features)
         if self.use_coordination:
             if price_features is None or price_features.shape != (
@@ -541,6 +558,10 @@ class MAPPO:
         arrays = {
             "model_use_memory": np.asarray(int(self.use_memory), dtype=np.int64),
             "model_use_reasoning": np.asarray(int(self.use_reasoning), dtype=np.int64),
+            "model_reasoning_feature_mode": np.asarray(self.reasoning_feature_mode),
+            "model_reasoning_feature_dim": np.asarray(
+                self.reasoning_feature_dim, dtype=np.int64
+            ),
             "model_use_coordination": np.asarray(int(self.use_coordination), dtype=np.int64),
             "model_use_constraint": np.asarray(int(self.use_constraint), dtype=np.int64),
             "model_num_satellites": np.asarray(self.num_satellites, dtype=np.int64),
@@ -559,11 +580,20 @@ class MAPPO:
         data = np.load(Path(path))
         saved_memory = bool(int(data["model_use_memory"])) if "model_use_memory" in data.files else False
         saved_reasoning = bool(int(data["model_use_reasoning"])) if "model_use_reasoning" in data.files else False
+        saved_reasoning_feature_mode = (
+            str(data["model_reasoning_feature_mode"])
+            if "model_reasoning_feature_mode" in data.files
+            else "legacy"
+        )
         saved_coordination = bool(int(data["model_use_coordination"])) if "model_use_coordination" in data.files else False
         saved_constraint = bool(int(data["model_use_constraint"])) if "model_use_constraint" in data.files else False
         if (
             saved_memory != self.use_memory
             or saved_reasoning != self.use_reasoning
+            or (
+                self.use_reasoning
+                and saved_reasoning_feature_mode != self.reasoning_feature_mode
+            )
             or saved_coordination != self.use_coordination
             or saved_constraint != self.use_constraint
         ):

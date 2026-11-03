@@ -1,15 +1,56 @@
 import argparse
 import csv
+import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import main
-from main import _rolling_mean, _save_training_plots
+from main import _rolling_mean, _save_training_plots, build_checkpoint_metadata
 
 
 class MainTest(unittest.TestCase):
+    def test_checkpoint_metadata_records_reasoning_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "residual.npz"
+            checkpoint.write_bytes(b"frozen residual")
+            config = {
+                "seed": 3,
+                "agent_seed": 7,
+                "environment_seed": 11,
+                "mappo": {
+                    "use_memory": True,
+                    "use_reasoning": True,
+                    "reasoning_feature_mode": "confidence_aware",
+                    "use_coordination": False,
+                },
+                "reasoning": {
+                    "world_model": "hybrid",
+                    "residual_model_path": str(checkpoint),
+                },
+            }
+            args = argparse.Namespace(
+                config="configs/default.yaml",
+                override=["configs/reasoning_aware_mappo.yaml"],
+            )
+
+            metadata = build_checkpoint_metadata(config, args)
+
+            self.assertEqual(metadata["world_model_type"], "hybrid")
+            self.assertEqual(
+                metadata["residual_checkpoint_path"], str(checkpoint.resolve())
+            )
+            self.assertEqual(
+                metadata["residual_checkpoint_sha256"],
+                hashlib.sha256(b"frozen residual").hexdigest(),
+            )
+            self.assertEqual(metadata["reasoning_feature_mode"], "confidence_aware")
+            self.assertEqual(metadata["history_recurrent_mode"], "recurrent")
+            self.assertEqual(metadata["coordination_mode"], "none")
+            self.assertEqual(metadata["training_seed"], 7)
+
     def test_rolling_mean_uses_trailing_window_with_minimum_one_sample(self) -> None:
         self.assertEqual(_rolling_mean([1.0, 2.0, 3.0, 4.0], window=3), [1.0, 1.5, 2.0, 3.0])
 
@@ -112,6 +153,11 @@ class MainTest(unittest.TestCase):
             )
             self.assertTrue((output_dir / "mappo_weights_final.npz").is_file())
             self.assertTrue((output_dir / "mappo_weights.npz").is_file())
+            with (output_dir / "checkpoint_metadata.json").open(
+                encoding="utf-8"
+            ) as handle:
+                metadata = json.load(handle)
+            self.assertEqual(metadata["training_seed"], 1)
             with (output_dir / "training_metrics.csv").open(
                 newline="", encoding="utf-8"
             ) as handle:

@@ -12,7 +12,11 @@ from .coordinator import (
 )
 from .environment import LEOMobilityEnv
 from .mappo import MAPPO
-from .reasoning import LookaheadReasoner, ReasoningResult
+from .reasoning import (
+    LookaheadReasoner,
+    ReasoningResult,
+    build_actor_reasoning_features,
+)
 
 
 def summarize_metrics(totals: dict[str, float], steps: int, epsilon: float = 1e-8) -> dict[str, float]:
@@ -130,9 +134,12 @@ class RolloutRunner:
         for _ in range(steps):
             reasoning_result: ReasoningResult | None = None
             reasoning_features = np.zeros(
+                (self.env.num_agents, self.agent.reasoning_feature_dim),
+                dtype=np.float64,
+            )
+            predicted_deficits = np.zeros(
                 (self.env.num_agents, self.env.action_dim), dtype=np.float64
             )
-            predicted_deficits = np.zeros_like(reasoning_features)
             price_features = self._local_price_features()
             prices_before = (
                 self.price_coordinator.prices
@@ -146,7 +153,12 @@ class RolloutRunner:
                 reasoning_result = self.reasoner.analyze(
                     self.env, self.masks, prices_before, rollout_mu
                 )
-                reasoning_features = reasoning_result.features
+                reasoning_features = build_actor_reasoning_features(
+                    reasoning_result,
+                    self.masks,
+                    self.reasoner.score_clip,
+                    self.agent.reasoning_feature_mode,
+                )
                 predicted_deficits = reasoning_result.predicted_deficits
             if self.agent.use_memory:
                 storage["previous_actions"].append(self.previous_actions.copy())
@@ -426,9 +438,16 @@ def _evaluate_policy_impl(
                 else None
             )
             reasoning_features = (
-                reasoning_result.features
+                build_actor_reasoning_features(
+                    reasoning_result,
+                    masks,
+                    reasoner.score_clip,
+                    agent.reasoning_feature_mode,
+                )
                 if reasoning_result is not None
-                else np.zeros((env.num_agents, env.action_dim), dtype=np.float64)
+                else np.zeros(
+                    (env.num_agents, agent.reasoning_feature_dim), dtype=np.float64
+                )
             )
             if agent.use_memory:
                 actions, _, new_hidden = agent.act_recurrent(

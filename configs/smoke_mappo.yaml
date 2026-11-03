@@ -1,0 +1,9 @@
+environment:
+  episode_steps: 4
+
+mappo:
+  rollout_steps: 4
+  update_epochs: 1
+  minibatch_size: 4
+  bptt_steps: 4
+  checkpoint_interval: 1

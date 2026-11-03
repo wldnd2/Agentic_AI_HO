@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 
@@ -28,6 +30,76 @@ def _rolling_mean(values: list[float], window: int = 50) -> list[float]:
     return result
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_checkpoint_metadata(
+    config: dict[str, Any], args: argparse.Namespace
+) -> dict[str, Any]:
+    """Build a sidecar provenance record without changing weight serialization."""
+    mappo = config.get("mappo", {})
+    reasoning = config.get("reasoning", {})
+    use_reasoning = bool(mappo.get("use_reasoning", False))
+    world_model_type = (
+        str(reasoning.get("world_model", "geometry")).lower()
+        if use_reasoning
+        else None
+    )
+    residual_path: Path | None = None
+    residual_sha256: str | None = None
+    if world_model_type == "hybrid":
+        configured_path = reasoning.get("residual_model_path")
+        if not configured_path:
+            raise ValueError(
+                "reasoning.residual_model_path is required when "
+                "reasoning.world_model=hybrid"
+            )
+        residual_path = Path(configured_path).expanduser().resolve()
+        if not residual_path.is_file():
+            raise FileNotFoundError(
+                f"hybrid residual model checkpoint does not exist: {residual_path}"
+            )
+        residual_sha256 = _sha256(residual_path)
+    override_paths = [] if args.override is None else [str(path) for path in args.override]
+    return {
+        "world_model_type": world_model_type,
+        "residual_checkpoint_path": (
+            str(residual_path) if residual_path is not None else None
+        ),
+        "residual_checkpoint_sha256": residual_sha256,
+        "reasoning_feature_mode": (
+            str(mappo.get("reasoning_feature_mode", "legacy")).lower()
+            if use_reasoning
+            else "none"
+        ),
+        "history_recurrent_mode": (
+            "recurrent" if bool(mappo.get("use_memory", False)) else "feedforward"
+        ),
+        "coordination_mode": (
+            "satellite_price"
+            if bool(mappo.get("use_coordination", False))
+            else "none"
+        ),
+        "config_path": str(args.config),
+        "override_paths": override_paths,
+        "resolved_config": config,
+        "training_seed": int(config.get("agent_seed", config.get("seed", 0))),
+        "environment_seed": int(
+            config.get("environment_seed", config.get("seed", 0))
+        ),
+        "protocol_terminology": {
+            "COMMIT": "EXECUTE_CHO",
+            "COOLDOWN": "POST_HO_GUARD",
+            "scope": "3GPP-inspired system-level abstraction",
+        },
+    }
+
+
 def train(args: argparse.Namespace) -> None:
     config = load_config(args.config, args.override)
     if args.environment_seed is not None:
@@ -50,6 +122,11 @@ def train(args: argparse.Namespace) -> None:
     runner = RolloutRunner(env, agent)
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_metadata = build_checkpoint_metadata(config, args)
+    with (output_dir / "checkpoint_metadata.json").open(
+        "w", encoding="utf-8"
+    ) as handle:
+        json.dump(checkpoint_metadata, handle, indent=2, sort_keys=True)
     checkpoint_interval = int(config["mappo"].get("checkpoint_interval", 100))
     if checkpoint_interval <= 0:
         raise ValueError("mappo.checkpoint_interval must be positive")

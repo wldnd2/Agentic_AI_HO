@@ -57,6 +57,7 @@ mappo:
   critic_hidden_dims: [256, 256]
   use_memory: false
   use_reasoning: false
+  reasoning_feature_mode: legacy
   use_coordination: false
   use_constraint: false
   recurrent_hidden_dim: 128

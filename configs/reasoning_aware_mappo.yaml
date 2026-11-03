@@ -1,0 +1,3 @@
+mappo:
+  use_reasoning: true
+  reasoning_feature_mode: confidence_aware
