@@ -50,6 +50,9 @@ reward:
   lambda_resource: 0.25
   eta_preparation: 0.20
   eta_handover: 0.02
+  # Backward-compatible ablation switch. When enabled, rejected PREP signaling
+  # reuses eta_preparation; admitted requests remain charged by reservation use.
+  charge_rejected_preparation_signaling: false
   epsilon: 1.0e-8
 mappo:
   hidden_dim: 64

@@ -73,6 +73,7 @@ class LEOMobilityEnv:
             "lambda_resource": 0.25,
             "eta_preparation": 0.20,
             "eta_handover": 0.02,
+            "charge_rejected_preparation_signaling": False,
             "epsilon": 1e-8,
             **config["reward"],
         }
@@ -120,6 +121,12 @@ class LEOMobilityEnv:
         self.epsilon_capacity = float(self.scheduler_cfg["epsilon_capacity"])
         if float(self.reward_cfg["eta_handover"]) < 0.0:
             raise ValueError("reward.eta_handover must be non-negative")
+        if not isinstance(
+            self.reward_cfg["charge_rejected_preparation_signaling"], bool
+        ):
+            raise ValueError(
+                "reward.charge_rejected_preparation_signaling must be boolean"
+            )
         if self.min_schedulable_spectral_efficiency < 0.0 or self.epsilon_capacity <= 0.0:
             raise ValueError("scheduler thresholds must be non-negative with positive epsilon_capacity")
         self.scheduler = QoSAwareFairScheduler(request_epsilon=self.epsilon_capacity)
@@ -1104,10 +1111,32 @@ class LEOMobilityEnv:
         # and mobility-management overhead for valid active-UE COMMIT starts.
         handover_train_cost = float(np.clip(handover_train_cost, 0.0, 1.0))
         handover_control_cost = float(self.reward_cfg["eta_handover"]) * handover_train_cost
-        control_cost = (
-            float(self.reward_cfg["eta_preparation"]) * tx_metrics["preparation_train_cost"]
-            + handover_control_cost
+        signaling_cost = float(action_counts.get("preparation_requested", 0)) / (
+            active_count + epsilon
         )
+        # A successful request is already represented by reservation occupancy.
+        # The opt-in correction charges only rejected request signaling, reusing
+        # the existing normalization and eta_preparation coefficient.
+        rejected_preparation_signaling_cost = float(
+            action_counts.get("preparation_rejected", 0)
+        ) / (active_count + epsilon)
+        charged_rejected_preparation_signaling_cost = (
+            rejected_preparation_signaling_cost
+            if self.reward_cfg["charge_rejected_preparation_signaling"]
+            else 0.0
+        )
+        eta_preparation = float(self.reward_cfg["eta_preparation"])
+        preparation_reservation_control_cost = (
+            eta_preparation * tx_metrics["preparation_train_cost"]
+        )
+        rejected_preparation_control_cost = (
+            eta_preparation * charged_rejected_preparation_signaling_cost
+        )
+        preparation_control_cost = (
+            preparation_reservation_control_cost
+            + rejected_preparation_control_cost
+        )
+        control_cost = preparation_control_cost + handover_control_cost
         outage_cost = tx_metrics["outage_ue_count"] / (tx_metrics["active_ue_count"] + epsilon)
         reward, _ = compute_training_reward(
             tx_metrics["service_deficit"],
@@ -1162,12 +1191,20 @@ class LEOMobilityEnv:
             "throughput_deficit": float(throughput_deficit),
             "handover_train_cost": handover_train_cost,
             "handover_control_cost": handover_control_cost,
+            "preparation_reservation_control_cost": preparation_reservation_control_cost,
+            "rejected_preparation_signaling_cost": rejected_preparation_signaling_cost,
+            "charged_rejected_preparation_signaling_cost": (
+                charged_rejected_preparation_signaling_cost
+            ),
+            "rejected_preparation_control_cost": rejected_preparation_control_cost,
+            "preparation_control_cost": preparation_control_cost,
             "active_handover_started": float(np.sum(self._last_handover_started * active)),
             "control_cost": float(control_cost),
             "resource_cost": float(control_cost),
             "outage_cost": float(outage_cost),
-            # Preparation requests per active UE and epoch (signaling constraint).
-            "signaling_cost": float(action_counts.get("preparation_requested", 0)) / (active_count + epsilon),
+            # All preparation requests per active UE and epoch. The optional
+            # reward correction uses only the rejected component reported above.
+            "signaling_cost": signaling_cost,
             "outage_ratio": float(outage_cost),
             "mean_valid_action_count": valid_action_count / self.num_agents,
             "prepare_count": float(action_counts["preparation_requested"]),
