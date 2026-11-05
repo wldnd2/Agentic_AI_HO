@@ -1,0 +1,3 @@
+mappo:
+  training_iterations: 500
+  checkpoint_interval: 100
